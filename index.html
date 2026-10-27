@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD Contract Rent Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">HUD Contract Rent Map</div>
+  <div class="asof" id="asof"></div>
+  <button class="link" id="aboutBtn">About the data</button>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <section class="block">
+      <label class="lbl" for="q">Search property, address, HUD ID or contract #</label>
+      <div class="searchwrap">
+        <input id="q" type="search" autocomplete="off" placeholder="e.g. Plummer Park, 17051 Plummer St, 800002227">
+        <div id="sugg" class="sugg" hidden></div>
+      </div>
+      <div class="row gap">
+        <button id="pinBtn" class="btn" title="Click the map to set the search center">Drop a pin</button>
+        <button id="clearBtn" class="btn ghost">Clear center</button>
+      </div>
+      <div id="centerInfo" class="center-info muted">No center set. Search or drop a pin.</div>
+      <div class="row gap mt">
+        <label class="lbl inline" for="radius">Radius</label>
+        <select id="radius">
+          <option>0.5</option><option>1</option><option>2</option><option selected>3</option><option>5</option>
+          <option>10</option><option>15</option><option>25</option><option>50</option><option>100</option>
+        </select>
+        <span>miles</span>
+        <input id="radiusCustom" type="number" min="0.1" step="0.1" placeholder="custom" title="Custom radius (miles)">
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><span>Filters</span><button class="link" id="resetFilters">Reset</button></div>
+      <details open><summary>Contract type <span class="cnt" id="f-doc-n"></span></summary><div id="f-doc" class="checks"></div></details>
+      <details><summary>Assistance program <span class="cnt" id="f-program-n"></span></summary>
+        <div class="row gap tiny"><button class="link" data-all="program">All</button><button class="link" data-none="program">None</button></div>
+        <div id="f-program" class="checks"></div></details>
+      <details><summary>Contract status <span class="cnt" id="f-status-n"></span></summary><div id="f-status" class="checks"></div></details>
+      <details><summary>Renewal option <span class="cnt" id="f-ropt-n"></span></summary><div id="f-ropt" class="checks"></div></details>
+      <details open><summary>Contract-term effective year <span class="cnt" id="f-year-n"></span></summary>
+        <div class="row gap">
+          <input id="yearMin" type="number" min="1970" max="2030" placeholder="from">
+          <span>to</span>
+          <input id="yearMax" type="number" min="1970" max="2030" placeholder="to">
+        </div>
+        <label class="chk"><input type="checkbox" id="yearUnknown" checked> Include unknown start date</label>
+        <div class="row gap mt">
+          <label class="lbl inline" for="minTerm">Contract length</label>
+          <select id="minTerm">
+            <option value="0">Any</option>
+            <option value="13">Longer than 1 year</option>
+            <option value="60">5 years or more</option>
+            <option value="240">20 years or more</option>
+          </select>
+        </div>
+        <p class="hint">HUD's <code>tracs_effective_date</code>: the start of the current contract. 12-month contracts (most PRACs, 1-year Section 8 renewals) restart every year, so set a length to see only newly started long-term contracts.</p>
+      </details>
+      <details open><summary>Bedrooms &amp; rent basis</summary>
+        <div id="f-bed" class="checks inline"></div>
+        <div id="f-basis" class="checks"></div>
+      </details>
+      <details><summary>Location &amp; coverage</summary>
+        <div id="f-loc" class="checks"></div>
+        <label class="chk"><input type="checkbox" id="propOnly"> Include property-only records (no contract in HUD files)</label>
+      </details>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><span>Export</span></div>
+      <div class="row gap">
+        <button class="btn" id="exportLines">Rents by bedroom (CSV)</button>
+        <button class="btn" id="exportProps">Properties (CSV)</button>
+      </div>
+      <p class="hint">Exports every filtered row, not just the rows shown.</p>
+    </section>
+  </aside>
+  <div class="split split-v" id="splitSide" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize the sidebar (double-click to reset)"></div>
+
+  <main class="main">
+    <div id="map" class="map"></div>
+    <div class="split split-h" id="splitMap" role="separator" aria-orientation="horizontal" tabindex="0" title="Drag to resize map and table (double-click to reset)"></div>
+    <div class="results">
+      <div class="results-head">
+        <div class="tabs">
+          <button class="tab active" data-view="lines">Rents by bedroom</button>
+          <button class="tab" data-view="props">Properties</button>
+        </div>
+        <div id="summary" class="summary"></div>
+        <button class="btn small" id="expandMap" title="Give the map the full height (table collapses to this bar)">Expand map</button>
+      </div>
+      <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+      <div id="more" class="more"></div>
+      <div id="selNote" class="more flag" hidden></div>
+    </div>
+  </main>
+
+  <aside id="detail" class="detail" hidden>
+    <div class="split split-d" id="splitDetail" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize this panel (double-click to reset)"></div>
+    <div class="detail-scroll">
+      <button class="close" id="closeDetail" aria-label="Close">×</button>
+      <div id="detailBody"></div>
+    </div>
+  </aside>
+</div>
+
+<dialog id="about"><div id="aboutBody"></div><form method="dialog"><button class="btn">Close</button></form></dialog>
+<div id="loading" class="loading">Loading HUD data…</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="assets/hud_data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
