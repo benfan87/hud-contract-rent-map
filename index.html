@@ -40,6 +40,24 @@
 
     <section class="block">
       <div class="block-head"><span>Filters</span><button class="link" id="resetFilters">Reset</button></div>
+      <details><summary>Location, size &amp; owner <span class="cnt" id="f-st-n"></span></summary>
+        <div class="row gap mt"><label class="lbl inline">Total units</label>
+          <input id="unitsMin" type="number" min="0" placeholder="min"><span>to</span><input id="unitsMax" type="number" min="0" placeholder="max">
+          <select id="sizePreset" title="Quick size ranges"><option value="">Preset…</option><option value="-">Any size</option><option value="-49">Under 50</option>
+            <option value="50-99">50–99</option><option value="100-199">100–199</option><option value="200-">200+</option></select></div>
+        <p class="hint">Total units at the property (HUD property file; assisted units when the total is missing). For unit size by bedrooms, use "Bedrooms &amp; rent basis" below.</p>
+        <div class="grp">City</div>
+        <input id="cityIn" type="search" autocomplete="off" placeholder="Type a city, e.g. Phoenix or Mesa AZ, then Enter">
+        <div id="cityMsg" class="hint"></div>
+        <div id="f-city" class="chips"></div>
+        <div class="grp">Owner group</div>
+        <div id="f-spon" class="chips"></div>
+        <p class="hint">Search an owner, sponsor or email domain (e.g. "mercyhousing"), or open a property and click "Show this group's whole portfolio".</p>
+        <div class="grp">State</div>
+        <div class="row gap tiny"><button class="link" data-all="st">All</button><button class="link" data-none="st">None</button></div>
+        <div id="f-st" class="checks"></div>
+        <p class="hint">Tip: type a state name or code (e.g. "Arizona" or "AZ") in the search box to jump to it.</p>
+      </details>
       <details open><summary>Contract type <span class="cnt" id="f-doc-n"></span></summary><div id="f-doc" class="checks"></div></details>
       <details><summary>Assistance program <span class="cnt" id="f-program-n"></span></summary>
         <div class="row gap tiny"><button class="link" data-all="program">All</button><button class="link" data-none="program">None</button></div>
@@ -71,6 +89,22 @@
       <details><summary>Location &amp; coverage</summary>
         <div id="f-loc" class="checks"></div>
         <label class="chk"><input type="checkbox" id="propOnly"> Include property-only records (no contract in HUD files)</label>
+      </details>
+      <details open><summary>Financing, LIHTC &amp; 2027 QCT/DDA <span class="cnt" id="f-fin-n"></span></summary>
+        <button class="btn small mt" id="targetBtn" title="223(f) loan (incl. 223(a)(7) refis of 223(f)) + active HAP contract + matched LIHTC whose Year 15 ends by next year">Target screen: 223(f) + HAP + LIHTC past Year 15</button>
+        <div class="grp">FHA loan type</div>
+        <div class="row gap tiny"><button class="link" data-all="soa">All</button><button class="link" data-none="soa">None</button></div>
+        <div id="f-soa" class="checks"></div>
+        <label class="chk"><input type="checkbox" id="tcOnly"> Loan flagged as including LIHTC (HUD "TC")</label>
+        <div class="row gap mt"><label class="lbl inline" for="lih">LIHTC</label>
+          <select id="lih"><option value="any">Any</option><option value="yes">Matched to LIHTC records</option><option value="no">No LIHTC match</option></select></div>
+        <label class="chk"><input type="checkbox" id="lihPossible"> Count "possible" LIHTC matches</label>
+        <div class="row gap mt"><label class="lbl inline">Year 15 ends</label>
+          <input id="y15Min" type="number" min="1990" max="2060" placeholder="from"><span>to</span><input id="y15Max" type="number" min="1990" max="2060" placeholder="to"></div>
+        <div class="row gap mt"><label class="lbl inline" for="allocBefore">No LIHTC allocation since</label><input id="allocBefore" type="number" min="1987" max="2035" placeholder="year"></div>
+        <div class="row gap mt"><label class="lbl inline" for="zone">2027 QCT / DDA</label>
+          <select id="zone"><option value="any">Any</option><option value="qct">In a QCT</option><option value="dda">In a DDA</option><option value="either">In a QCT or DDA</option></select></div>
+        <p class="hint">Year 15 and allocation filters use high/medium LIHTC matches. Turn on the QCT/DDA map layers from the layers button (top right of the map).</p>
       </details>
     </section>
 

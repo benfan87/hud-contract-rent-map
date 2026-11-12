@@ -136,3 +136,8 @@ dialog p, dialog li { font-size: 12.5px; }
   .tablewrap { max-height: 60vh; }
   .detail { position: fixed; top: 44px; width: 100%; }
 }
+
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
+.chip { display: inline-flex; gap: 4px; align-items: center; padding: 1px 4px 1px 8px; border: 1px solid var(--line, #d0d7de); border-radius: 12px; font-size: 12px; }
+.chip .n { color: var(--muted); font-size: 11px; }
+#cityIn { width: 100%; box-sizing: border-box; margin-top: 2px; }
