@@ -69,6 +69,10 @@ const cons = H.C.map((c, i) => ({
   pct: c[17], band: c[18], rtype: c[19], signed: c[20], signedYear: c[21], signedBad: c[22], rwCur: c[23], rwOv: c[24], lines: [],
   effYear: c[9] ? +c[9].slice(0, 4) : null,
 }));
+// Old contract: number only in HUD's rent/UA file, not in HUD's active Section 8 contract list (no type, program,
+// status or dates). Usually a predecessor contract that a renewal or combined contract replaced.
+const OLD_STATUS = 'Not in HUD active list';
+for (const c of cons) c.old = c.status < 0 && c.program < 0 && c.doc < 0 && !c.eff;
 for (const c of cons) props[c.p].cons.push(c);
 const BASIS_ORDER = { V: 0, R: 1, E: 2, U: 3 };
 const lines = H.L.map((l, i) => ({
@@ -103,6 +107,7 @@ const label = {
 const COUNTS = { doc: new Map(), program: new Map(), status: new Map(), ropt: new Map() };
 const progGroup = new Map();
 for (const c of cons) {
+  if (c.old) continue;
   for (const k in COUNTS) COUNTS[k].set(c[k], (COUNTS[k].get(c[k]) || 0) + 1);
   if (c.program >= 0) progGroup.set(c.program, c.group);
 }
@@ -110,7 +115,7 @@ const allOf = k => new Set((k === 'soa' ? SOA_N : k === 'st' ? STATE_N : COUNTS[
 const defaults = () => ({
   doc: allOf('doc'), program: allOf('program'), status: allOf('status'), ropt: allOf('ropt'),
   yearMin: null, yearMax: null, yearUnknown: true, minTerm: 0,  // contract-term effective year + minimum length (months)
-  bed: new Set([0, 1, 2, 3, 4, 5]), basis: new Set(['V', 'R', 'E', 'U']), loc: new Set(['P', 'A', 'C']), propOnly: false,
+  bed: new Set([0, 1, 2, 3, 4, 5]), basis: new Set(['V', 'R', 'E', 'U']), loc: new Set(['P', 'A', 'C']), propOnly: false, oldCons: false,
   st: allOf('st'), city: new Set(), spon: new Set(), unitsMin: null, unitsMax: null,
   soa: allOf('soa'), tcOnly: false, lih: 'any', lihPossible: false, y15Min: null, y15Max: null, allocBefore: null, zone: 'any',
 });
@@ -120,7 +125,12 @@ const PSEUDO = { doc: -1, program: -1, status: -1, ropt: -1, effYear: null, term
 /* ---------- filtering ---------- */
 function contractOK(c) {
   const f = state.f;
-  if (!f.doc.has(c.doc) || !f.program.has(c.program) || !f.status.has(c.status) || !f.ropt.has(c.ropt)) return false;
+  if (c.old) { if (!f.oldCons) return false; }  // no type/program/status to filter on
+  else {
+    // a value no listed contract has (e.g. "Unknown" for the property-only placeholder) can't be unticked, so it passes
+    const ok = k => f[k].has(c[k]) || !COUNTS[k].has(c[k]);
+    if (!ok('doc') || !ok('program') || !ok('status') || !ok('ropt')) return false;
+  }
   if (f.minTerm && !(c.term >= f.minTerm)) return false;
   if (c.effYear == null) return f.yearUnknown;
   return (f.yearMin == null || c.effYear >= f.yearMin) && (f.yearMax == null || c.effYear <= f.yearMax);
@@ -160,7 +170,7 @@ function haversine(a, b, c, d) {
 
 function compute() {
   const f = state.f, ctr = state.center, lineDefault = f.bed.size === 6 && f.basis.size === 4;
-  const out = []; let unlocated = 0, hiddenPropOnly = 0;
+  const out = []; let unlocated = 0, hiddenPropOnly = 0, hiddenOld = 0, hiddenOldProps = 0;
   for (const p of props) {
     if (!propOK(p)) continue;
     const located = p.lc !== 'N';
@@ -171,18 +181,21 @@ function compute() {
       if (!lineDefault || !contractOK(PSEUDO)) continue;
       if (!f.propOnly) { if (!ctr || located) hiddenPropOnly++; continue; }
     } else {
+      let oldHere = 0;
       for (const c of p.cons) {
+        if (c.old && !f.oldCons) { oldHere++; continue; }
         if (!contractOK(c)) continue;
         const ml = c.lines.filter(lineOK);
         if (!lineDefault && !ml.length) continue;
         mc.push({ c, lines: ml });
       }
+      if (oldHere && (!ctr || located)) { hiddenOld += oldHere; if (!mc.length && oldHere === p.cons.length) hiddenOldProps++; }
       if (!mc.length) continue;
     }
     if (ctr && !located) { unlocated++; continue; }
     out.push({ p, mc, best: bestBasis(mc) });
   }
-  return { out, unlocated, hiddenPropOnly };
+  return { out, unlocated, hiddenPropOnly, hiddenOld, hiddenOldProps };
 }
 function bestBasis(mc) {
   let b = 'N';
@@ -338,7 +351,9 @@ const fmtPct = v => v == null ? '' : v.toFixed(1) + '%';
 const unk = v => v == null || v === '' ? UNK : v;
 const pname = p => p.name || `(name unavailable) ${p.id}`;
 const signedText = c => c.signed || (c.signedBad ? `${UNK} (source: ${c.signedBad})` : UNK);
-const doc = c => c.doc < 0 ? UNK : D.doc[c.doc];
+const doc = c => c.old ? 'Old contract' : c.doc < 0 ? UNK : D.doc[c.doc];
+const statusOf = c => c.old ? OLD_STATUS : dict('status', c.status) || UNK;
+const programOf = c => c.old ? '—' : dict('program', c.program) || UNK;
 const badge = b => `<span class="b ${b}">${BASIS_SHORT[b]}</span>`;
 
 const loanText = p => uniq(p.loans.map(l => l.soa >= 0 ? D.soa[l.soa] : l.soaCode || 'Unknown')).join('; ');
@@ -352,8 +367,8 @@ const LINE_COLS = [
   { k: 'city', h: 'City', v: r => r.p.city ? `${r.p.city}, ${r.p.st}` : '' },
   { k: 'con', h: 'Contract', v: r => r.c.no },
   { k: 'doc', h: 'Type', v: r => doc(r.c) },
-  { k: 'prog', h: 'Program', v: r => dict('program', r.c.program) || UNK },
-  { k: 'status', h: 'Status', v: r => dict('status', r.c.status) || UNK },
+  { k: 'prog', h: 'Program', v: r => programOf(r.c) },
+  { k: 'status', h: 'Status', v: r => statusOf(r.c), f: (v, r) => r.c.old ? `<span class="b out" title="In HUD's rent/UA file only. Not in HUD's active Section 8 contract list; likely replaced by a renewal or combined contract. Rents may be years old.">${esc(v)}</span>` : esc(v) },
   { k: 'bed', h: 'BR', n: 1, v: r => r.l ? r.l.bed : null, f: v => v == null ? '' : v === 0 ? '0 (studio)' : v },
   { k: 'units', h: 'Units', n: 1, v: r => r.l ? r.l.units : null, f: num },
   { k: 'rent', h: 'Contract rent', n: 1, v: r => r.l ? r.l.rent : null, f: (v, r) => v != null ? money(v) : r.l && r.l.basis === 'E' ? '<span class="muted" title="Utility allowance not reported, so contract rent is not estimated">n/a</span>' : '' },
@@ -377,8 +392,8 @@ const PROP_COLS = [
   { k: 'addr', h: 'Address', v: r => r.p.addr },
   { k: 'city', h: 'City', v: r => r.p.city ? `${r.p.city}, ${r.p.st}` : '' },
   { k: 'ncon', h: 'Contracts', n: 1, v: r => r.mc.length, f: (v, r) => v === r.p.cons.length ? v : `${v} of ${r.p.cons.length}` },
-  { k: 'prog', h: 'Programs', v: r => uniq(r.mc.map(m => dict('program', m.c.program) || UNK)).join(', ') },
-  { k: 'status', h: 'Status', v: r => uniq(r.mc.map(m => dict('status', m.c.status) || UNK)).join(', ') },
+  { k: 'prog', h: 'Programs', v: r => uniq(r.mc.map(m => programOf(m.c))).join(', ') },
+  { k: 'status', h: 'Status', v: r => uniq(r.mc.map(m => statusOf(m.c))).join(', ') },
   { k: 'total', h: 'Total units', n: 1, v: r => pSize(r.p), f: num },
   { k: 'assisted', h: 'Assisted units', n: 1, v: r => r.p.assisted, f: num },
   { k: 'mix', h: 'Bedroom mix (contract units)', v: r => bedMix(r.mc) },
@@ -446,7 +461,7 @@ function renderTable() {
 /* ---------- refresh ---------- */
 function refresh() {
   state.result = compute();
-  const { out, unlocated, hiddenPropOnly } = state.result;
+  const { out, unlocated, hiddenPropOnly, hiddenOld, hiddenOldProps } = state.result;
   drawMarkers(out);
   drawHilite();
   renderTable();
@@ -460,6 +475,7 @@ function refresh() {
   let msg = `${out.length.toLocaleString()} properties · ${nLines.toLocaleString()} rent lines${where}`;
   if (unlocated) msg += ` · ${unlocated.toLocaleString()} matching records nationwide have no map location, so no radius can include them (find them by name, ID or contract #)`;
   if (hiddenPropOnly && !state.f.propOnly) msg += ` · ${hiddenPropOnly.toLocaleString()} property-only records hidden`;
+  if (hiddenOld) msg += ` · ${hiddenOld.toLocaleString()} old rent-file-only contracts hidden${hiddenOldProps ? ` (${hiddenOldProps.toLocaleString()} properties have only old contracts)` : ''}`;
   $('#summary').textContent = msg;
   updateFilterCounts();
   writeHash();
@@ -573,7 +589,8 @@ function lihtcHtml(p) {
 function contractCard(c, isMatch) {
   const head = `<div class="contract-head"><b>${esc(c.no)}</b><span class="b out">${esc(doc(c))}</span>
     <span>${esc(dict('program', c.program) || 'Program unknown')}${c.group >= 0 ? ` · ${esc(D.group[c.group])}` : ''}${c.pcat >= 0 ? ` · ${esc(D.pcat[c.pcat])}` : ''}</span>
-    <span class="${c.status >= 0 && D.status[c.status] !== 'Active' ? 'flag' : ''}">${esc(dict('status', c.status) || 'Status unknown')}</span></div>`;
+    <span class="${c.old || (c.status >= 0 && D.status[c.status] !== 'Active') ? 'flag' : ''}">${esc(c.old ? OLD_STATUS : dict('status', c.status) || 'Status unknown')}</span></div>`
+    + (c.old ? `<p class="note flag">Old contract: this number is in HUD's rent/UA file but not in HUD's active Section 8 contract list, so it has no type, program, status or dates. It is most likely a predecessor contract that a renewal or combined contract replaced${props[c.p].cons.some(x => !x.old && x.status >= 0 && D.status[x.status] === 'Active') ? ' (this property has an active contract, listed separately)' : ''}. Its rents may be years old; don't use them as current rents.</p>` : '');
   const signed = c.signed ? esc(c.signed) : c.signedBad ? `<span class="muted">${UNK}: source shows ${esc(c.signedBad)}, treated as a placeholder/invalid date</span>` : '';
   const fields = kv([
     ['Contract assisted units', num(c.units) + (c.maxUnits != null ? ` <span class="muted">(max ${num(c.maxUnits)})</span>` : '')],
@@ -664,6 +681,7 @@ function buildFilters() {
   $('#yearMin').value = f.yearMin ?? ''; $('#yearMax').value = f.yearMax ?? ''; $('#yearUnknown').checked = f.yearUnknown;
   $('#minTerm').value = String(f.minTerm);
   $('#propOnly').checked = f.propOnly;
+  $('#oldCons').checked = f.oldCons;
 }
 function updateFilterCounts() {
   const f = state.f;
@@ -848,7 +866,7 @@ function linesTable() {
     'Renewal owner-signature date', 'Owner-signature date in source (if invalid)', 'Review notes', 'Verified document', 'Verified effective date', 'Owner', ...FIN_HEAD, ...OWN_HEAD];
   const rows = sortRows(rowsFor('lines', state.result.out), LINE_COLS).map(({ p, c, l }) => [
     p.dist != null && state.center ? p.dist.toFixed(2) : '', p.id, p.name, p.addr, p.city, p.st, p.zip, LOC_CLASS[p.lc], c.no, doc(c),
-    dict('program', c.program) || UNK, dict('group', c.group) || UNK, dict('status', c.status) || UNK, l?.bed, l?.units, l?.bedUnits,
+    programOf(c), c.old ? '' : dict('group', c.group) || UNK, statusOf(c), l?.bed, l?.units, l?.bedUnits,
     l?.rent, l?.ua, l?.gross, l ? BASIS_LABEL[l.basis] : 'No bedroom data', l?.source, l?.fmrAssist, l?.fmrRent, l?.q, c.pct,
     c.eff, c.curExp, c.ovExp, c.term, dict('ropt', c.ropt), dict('rstat', c.rstat), dict('rtype', c.rtype),
     c.signed || UNK, c.signedBad, [l?.flag, l?.vd?.[3]].filter(Boolean).join('; '), l?.vd?.[0], l?.vd?.[1], p.ow?.name || p.owner, ...finCsv(p), ...ownCsv(p)]);
@@ -862,7 +880,7 @@ function propsTable() {
   const rows = sortRows(state.result.out, PROP_COLS).map(r => [
     r.p.dist != null && state.center ? r.p.dist.toFixed(2) : '', r.p.id, r.p.name, r.p.addr, r.p.city, r.p.st, r.p.zip, r.p.county, LOC_CLASS[r.p.lc],
     r.p.total, r.p.assisted, r.mc.length, r.p.cons.length, r.mc.map(m => m.c.no).join('; '), uniq(r.mc.map(m => doc(m.c))).join('; '),
-    uniq(r.mc.map(m => dict('program', m.c.program) || UNK)).join('; '), uniq(r.mc.map(m => dict('status', m.c.status) || UNK)).join('; '),
+    uniq(r.mc.map(m => programOf(m.c))).join('; '), uniq(r.mc.map(m => statusOf(m.c))).join('; '),
     bedMix(r.mc), BASIS_SHORT[r.best], minOf(r.mc.map(m => m.c.curExp)), maxOf(r.mc.map(m => m.c.signed)) || UNK, r.p.ow?.name || r.p.owner, r.p.ag?.name || r.p.mgmt, ...finCsv(r.p), ...ownCsv(r.p)]);
   return [head, ...rows];
 }
@@ -919,6 +937,8 @@ function renderAbout() {
   <li>Owner entity, management agent and their contacts come from HUD's <a href="${esc(H.meta.owners.source)}" target="_blank" rel="noopener">MF Assistance &amp; Section 8 property file</a> (${H.meta.owners.properties.toLocaleString()} properties).</li>
   <li><b>Owner group (likely sponsor)</b>: owner entities that share an organization's email domain (free and ISP mail such as gmail.com is ignored), or, without one, the same mailing address. ${H.meta.owners.sponsor_groups.toLocaleString()} groups cover ${H.meta.owners.properties_in_groups.toLocaleString()} properties. It's a lead, not proof of control: confirm with state entity filings and recorded deeds. Search a sponsor name or email domain (e.g. "mercyhousing") to see its portfolio.</li></ul>` : ''}
   ${H.meta.zones ? `<h3>2027 QCT / DDA</h3><ul><li>${esc(H.meta.zones.note)}</li></ul>` : ''}
+  <h3>Old contracts</h3><ul>
+  <li>${cons.filter(c => c.old).length.toLocaleString()} contract numbers appear only in HUD's rent/UA file, not in HUD's active Section 8 contract list, so they have no type, program, status or dates. Most are predecessor contracts replaced by a renewal or a combined contract (e.g., an original "L" LMSA contract renewed under an "M" number). They're hidden by default; tick "Include old rent-file-only contracts" under Contract type to show them, labeled "${OLD_STATUS}". Their rents may be years old.</li></ul>
   <h3>Dates</h3><ul>
   <li><b>Contract-term effective year</b> (filter) = HUD <code>tracs_effective_date</code>, the start of the current contract (start + term months = overall expiration for 92% of contracts). 12-month contracts restart every year, so pair it with a minimum contract length to find newly started long-term contracts.</li>
   <li><b>Renewal owner-signed</b> (shown, not filtered) = HUD <code>owner_submitted_date</code>, the owner's signature on HUD's latest renewal action. For a new renewal contract it usually precedes the start date; for an "Amend Rents" action it is the latest rent change on an older contract. It is not the HAP execution date or when the quoted rent took effect. ${s.signed_valid.toLocaleString()} contracts have a usable date. ${s.signed_invalid} contracts show placeholder or future dates (e.g., 1900-01-02 or 2099) and are treated as unknown.</li>
@@ -1054,6 +1074,7 @@ $('#targetBtn').onclick = () => {
   buildFilters(); refresh();
 };
 $('#propOnly').onchange = e => { state.f.propOnly = e.target.checked; refresh(); };
+$('#oldCons').onchange = e => { state.f.oldCons = e.target.checked; refresh(); };
 $('#resetFilters').onclick = () => { state.f = defaults(); buildFilters(); refresh(); };
 document.querySelectorAll('[data-all],[data-none]').forEach(b => b.onclick = () => {
   const k = b.dataset.all || b.dataset.none;
