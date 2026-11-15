@@ -17,9 +17,9 @@
 <div class="layout">
   <aside class="side">
     <section class="block">
-      <label class="lbl" for="q">Search property, address, HUD ID or contract #</label>
+      <label class="lbl" for="q">Search a property, address, city, state, owner or HUD ID</label>
       <div class="searchwrap">
-        <input id="q" type="search" autocomplete="off" placeholder="e.g. Plummer Park, 17051 Plummer St, 800002227">
+        <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="e.g. Plummer Park · Phoenix AZ · mercyhousing · 800002227">
         <div id="sugg" class="sugg" hidden></div>
       </div>
       <div class="row gap">
@@ -38,9 +38,9 @@
       </div>
     </section>
 
-    <section class="block">
+    <section class="block" id="filtersBlock">
       <div class="block-head"><span>Filters</span><button class="link" id="resetFilters">Reset</button></div>
-      <details><summary>Location, size &amp; owner <span class="cnt" id="f-st-n"></span></summary>
+      <details open><summary>Location, size &amp; owner <span class="cnt" id="f-st-n"></span></summary>
         <div class="row gap mt"><label class="lbl inline">Total units</label>
           <input id="unitsMin" type="number" min="0" placeholder="min"><span>to</span><input id="unitsMax" type="number" min="0" placeholder="max">
           <select id="sizePreset" title="Quick size ranges"><option value="">Preset…</option><option value="-">Any size</option><option value="-49">Under 50</option>
@@ -64,7 +64,7 @@
         <div id="f-st" class="checks"></div>
         <p class="hint">Tip: type a state name or code (e.g. "Arizona" or "AZ") in the search box to jump to it.</p>
       </details>
-      <details open><summary>Contract type <span class="cnt" id="f-doc-n"></span></summary>
+      <details><summary>Contract type <span class="cnt" id="f-doc-n"></span></summary>
         <label class="chk"><input type="checkbox" id="oldCons"> Include old rent-file-only contracts <span class="muted">(not in HUD's active contract list; likely replaced by a renewal; rents may be years old)</span></label><div id="f-doc" class="checks"></div></details>
       <details><summary>Assistance program <span class="cnt" id="f-program-n"></span></summary>
         <div class="row gap tiny"><button class="link" data-all="program">All</button><button class="link" data-none="program">None</button></div>
@@ -97,7 +97,7 @@
         </div>
         <p class="hint">HUD's <code>tracs_effective_date</code>: the start of the current contract. 12-month contracts (most PRACs, 1-year Section 8 renewals) restart every year, so set a length to see only newly started long-term contracts.</p>
       </details>
-      <details open><summary>Bedrooms &amp; rent basis</summary>
+      <details><summary>Bedrooms &amp; rent basis</summary>
         <div id="f-bed" class="checks inline"></div>
         <div id="f-basis" class="checks"></div>
       </details>
@@ -105,7 +105,7 @@
         <div id="f-loc" class="checks"></div>
         <label class="chk"><input type="checkbox" id="propOnly"> Include property-only records (no contract in HUD files)</label>
       </details>
-      <details open><summary>Financing, LIHTC &amp; 2027 QCT/DDA <span class="cnt" id="f-fin-n"></span></summary>
+      <details><summary>Financing, LIHTC &amp; 2027 QCT/DDA <span class="cnt" id="f-fin-n"></span></summary>
         <button class="btn small mt" id="targetBtn" title="223(f) loan (incl. 223(a)(7) refis of 223(f)) + active HAP contract + matched LIHTC whose Year 15 ends by next year">Target screen: 223(f) + HAP + LIHTC past Year 15</button>
         <div class="grp">FHA loan type</div>
         <div class="row gap tiny"><button class="link" data-all="soa">All</button><button class="link" data-none="soa">None</button></div>
@@ -123,7 +123,7 @@
       </details>
     </section>
 
-    <section class="block">
+    <section class="block" id="exportBlock">
       <div class="block-head"><span>Export</span></div>
       <div class="row gap">
         <button class="btn" id="exportLines">Rents by bedroom (CSV)</button>
@@ -144,9 +144,11 @@
           <button class="tab" data-view="props">Properties</button>
         </div>
         <div id="summary" class="summary"></div>
+        <button class="btn small mobile-only" id="filtersBtn">Filters</button>
         <button class="btn small" id="expandMap" title="Give the map the full height (table collapses to this bar)">Expand map</button>
       </div>
-      <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+      <div id="active" class="active" hidden></div>
+      <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table><div id="empty" class="empty" hidden></div></div>
       <div id="more" class="more"></div>
       <div id="selNote" class="more flag" hidden></div>
     </div>
@@ -162,7 +164,7 @@
 </div>
 
 <dialog id="about"><div id="aboutBody"></div><form method="dialog"><button class="btn">Close</button></form></dialog>
-<div id="loading" class="loading">Loading HUD data…</div>
+<div id="loading" class="loading"><div>Loading HUD data…<small>About 30 MB of HUD contract data loads into your browser. The first visit can take 10–20 seconds; after that it's cached.</small></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="assets/hud_data.js"></script>

@@ -372,53 +372,53 @@ const lihHtml = p => !p.lih ? '' : !hasLih(p) ? '<span class="muted">possible ma
   : `${p.lih.lastAlloc ?? '–'} / ${p.lih.lastPis ?? '–'}${p.lih.resynd ? ` <span class="b out">resynd. ${p.lih.resynd}</span>` : ''}`;
 const zoneText = p => p.qct == null ? '' : [p.qct && 'QCT', p.dda && 'DDA'].filter(Boolean).join(' + ') || 'No';
 const LINE_COLS = [
-  { k: 'dist', h: 'Mi', n: 1, v: r => r.p.dist, f: v => v == null ? '' : v.toFixed(2) },
-  { k: 'name', h: 'Property', v: r => r.p.name || null, f: (v, r) => esc(pname(r.p)) },
+  { k: 'dist', h: 'Mi', t: 'Miles from the search center (set one by searching or dropping a pin)', n: 1, v: r => r.p.dist, f: v => v == null ? '' : v.toFixed(2) },
+  { k: 'name', h: 'Property', t: 'Click a row to open the property panel', v: r => r.p.name || null, f: (v, r) => esc(pname(r.p)) },
   { k: 'city', h: 'City', v: r => r.p.city ? `${r.p.city}, ${r.p.st}` : '' },
-  { k: 'con', h: 'Contract', v: r => r.c.no },
+  { k: 'con', h: 'Contract', t: 'HUD contract number', v: r => r.c.no },
   { k: 'doc', h: 'Type', v: r => doc(r.c) },
   { k: 'prog', h: 'Program', v: r => programOf(r.c) },
   { k: 'status', h: 'Status', v: r => statusOf(r.c), f: (v, r) => r.c.old ? `<span class="b out" title="In HUD's rent/UA file only. Not in HUD's active Section 8 contract list; likely replaced by a renewal or combined contract. Rents may be years old.">${esc(v)}</span>` : esc(v) },
   { k: 'bed', h: 'BR', n: 1, v: r => r.l ? r.l.bed : null, f: v => v == null ? '' : v === 0 ? '0 (studio)' : v },
   { k: 'units', h: 'Units', n: 1, v: r => r.l ? r.l.units : null, f: num },
   { k: 'rent', h: 'Contract rent', n: 1, v: r => r.l ? r.l.rent : null, f: (v, r) => v != null ? money(v) : r.l && r.l.basis === 'E' ? '<span class="muted" title="Utility allowance not reported, so contract rent is not estimated">n/a</span>' : '' },
-  { k: 'ua', h: 'UA', n: 1, v: r => r.l ? r.l.ua : null, f: (v, r) => v != null ? money(v) : r.l && r.l.basis !== 'V' && r.l.basis !== 'R' ? '<span class="muted">unknown</span>' : '' },
+  { k: 'ua', h: 'UA', t: 'Utility allowance (monthly, per unit)', n: 1, v: r => r.l ? r.l.ua : null, f: (v, r) => v != null ? money(v) : r.l && r.l.basis !== 'V' && r.l.basis !== 'R' ? '<span class="muted">unknown</span>' : '' },
   { k: 'gross', h: 'Gross rent', n: 1, v: r => r.l ? r.l.gross : null, f: (v, r) => v == null ? '' : money(v) + (r.l.basis === 'E' ? ' <span class="est">est.</span>' : '') },
-  { k: 'basis', h: 'Basis', v: r => r.l ? BASIS_ORDER[r.l.basis] : 9, f: (v, r) => r.l ? badge(r.l.basis) : '<span class="muted">no bedroom data</span>' },
+  { k: 'basis', h: 'Basis', t: 'Where the rent comes from: Verified document, Reported HUD rent file, or Estimated gross (FMR × HUD ratio)', v: r => r.l ? BASIS_ORDER[r.l.basis] : 9, f: (v, r) => r.l ? badge(r.l.basis) : '<span class="muted">no bedroom data</span>' },
   { k: 'src', h: 'Source', v: r => r.l ? (r.l.vd ? `${r.l.vd[0]}, eff. ${r.l.vd[1]}` : r.l.source) : '' },
-  { k: 'pct', h: 'HUD rent/FMR', n: 1, v: r => r.c.pct, f: fmtPct },
+  { k: 'pct', h: 'HUD rent/FMR', t: 'HUD contract gross rent as a % of fair market rent', n: 1, v: r => r.c.pct, f: fmtPct },
   { k: 'loan', h: 'FHA loan', v: r => loanText(r.p) },
-  { k: 'y15', h: 'LIHTC Year 15', n: 1, v: r => hasLih(r.p) ? r.p.lih.y15 : null, f: (v, r) => y15Html(r.p) },
-  { k: 'zone', h: '2027 QCT/DDA', v: r => zoneText(r.p) },
-  { k: 'eff', h: 'Term effective', v: r => r.c.eff || '' },
-  { k: 'cur', h: 'Current exp.', v: r => r.c.curExp || '' },
-  { k: 'ov', h: 'Overall exp.', v: r => r.c.ovExp || '' },
-  { k: 'term', h: 'Term (mo)', n: 1, v: r => r.c.term, f: num },
-  { k: 'signed', h: 'Renewal owner-signed', v: r => r.c.signed || '', f: (v, r) => v || `<span class="muted">${r.c.signedBad ? 'Unknown*' : UNK}</span>` },
+  { k: 'y15', h: 'LIHTC Year 15', t: 'Year the LIHTC compliance period ends (latest placed-in-service year + 14)', n: 1, v: r => hasLih(r.p) ? r.p.lih.y15 : null, f: (v, r) => y15Html(r.p) },
+  { k: 'zone', h: '2027 QCT/DDA', t: 'Qualified census tract / difficult development area for 2027 (LIHTC basis boost)', v: r => zoneText(r.p) },
+  { k: 'eff', h: 'Term effective', t: 'Start of the current contract term', v: r => r.c.eff || '' },
+  { k: 'cur', h: 'Current exp.', t: 'End of the current contract term (the next renewal step)', v: r => r.c.curExp || '' },
+  { k: 'ov', h: 'Overall exp.', t: 'End of the whole contract, including remaining option terms', v: r => r.c.ovExp || '' },
+  { k: 'term', h: 'Term (mo)', t: 'Contract term in months', n: 1, v: r => r.c.term, f: num },
+  { k: 'signed', h: 'Renewal owner-signed', t: "Owner's signature date on HUD's latest renewal action", v: r => r.c.signed || '', f: (v, r) => v || `<span class="muted">${r.c.signedBad ? 'Unknown*' : UNK}</span>` },
 ];
 const PROP_COLS = [
-  { k: 'dist', h: 'Mi', n: 1, v: r => r.p.dist, f: v => v == null ? '' : v.toFixed(2) },
-  { k: 'name', h: 'Property', v: r => r.p.name || null, f: (v, r) => esc(pname(r.p)) },
+  { k: 'dist', h: 'Mi', t: 'Miles from the search center (set one by searching or dropping a pin)', n: 1, v: r => r.p.dist, f: v => v == null ? '' : v.toFixed(2) },
+  { k: 'name', h: 'Property', t: 'Click a row to open the property panel', v: r => r.p.name || null, f: (v, r) => esc(pname(r.p)) },
   { k: 'addr', h: 'Address', v: r => r.p.addr },
   { k: 'city', h: 'City', v: r => r.p.city ? `${r.p.city}, ${r.p.st}` : '' },
-  { k: 'ncon', h: 'Contracts', n: 1, v: r => r.mc.length, f: (v, r) => v === r.p.cons.length ? v : `${v} of ${r.p.cons.length}` },
+  { k: 'ncon', h: 'Contracts', t: 'Contracts matching the current filters (of all contracts at the property)', n: 1, v: r => r.mc.length, f: (v, r) => v === r.p.cons.length ? v : `${v} of ${r.p.cons.length}` },
   { k: 'prog', h: 'Programs', v: r => uniq(r.mc.map(m => programOf(m.c))).join(', ') },
   { k: 'status', h: 'Status', v: r => uniq(r.mc.map(m => statusOf(m.c))).join(', ') },
   { k: 'total', h: 'Total units', n: 1, v: r => pSize(r.p), f: num },
   { k: 'assisted', h: 'Assisted units', n: 1, v: r => r.p.assisted, f: num },
   { k: 'mix', h: 'Bedroom mix (contract units)', v: r => bedMix(r.mc) },
-  { k: 'best', h: 'Best rent basis', v: r => BASIS_ORDER[r.best] ?? 9, f: (v, r) => badge(r.best) },
-  { k: 'cur', h: 'Next current exp.', v: r => minOf(r.mc.map(m => m.c.curExp)) },
-  { k: 'ov', h: 'Next overall exp.', v: r => minOf(r.mc.map(m => m.c.ovExp)) },
-  { k: 'signed', h: 'Latest owner-signed', v: r => maxOf(r.mc.map(m => m.c.signed)) },
-  { k: 'loan', h: 'FHA loan', v: r => loanText(r.p) },
-  { k: 'lih', h: 'LIHTC alloc. / PIS', v: r => hasLih(r.p) ? (r.p.lih.lastAlloc ?? r.p.lih.lastPis) : null, f: (v, r) => lihHtml(r.p) },
-  { k: 'y15', h: 'Year 15', n: 1, v: r => hasLih(r.p) ? r.p.lih.y15 : null, f: (v, r) => y15Html(r.p) },
-  { k: 'zone', h: '2027 QCT/DDA', v: r => zoneText(r.p) },
-  { k: 'owner', h: 'Owner', v: r => r.p.ow?.name || r.p.owner || '' },
-  { k: 'own', h: 'Owned since', v: r => r.p.ownSince || '' },
-  { k: 'spon', h: 'Owner group', v: r => sponLabel(r.p.spon) },
-  { k: 'loc', h: 'Location', v: r => r.p.lc, f: (v, r) => v === 'P' ? 'Precise' : v === 'A' ? '<span class="b out">Approx. (HUD)</span>' : v === 'C' ? '<span class="b out">ZIP centroid</span>' : '<span class="flag">None</span>' },
+  { k: 'best', h: 'Best rent basis', t: 'Best rent source among the matching contracts: Verified document, Reported HUD rent file, or Estimated', v: r => BASIS_ORDER[r.best] ?? 9, f: (v, r) => badge(r.best) },
+  { k: 'cur', h: 'Next current exp.', t: 'Earliest end of a current contract term (the next renewal step)', v: r => minOf(r.mc.map(m => m.c.curExp)) },
+  { k: 'ov', h: 'Next overall exp.', t: 'Earliest overall contract expiration: when a contract, including remaining option terms, runs out', v: r => minOf(r.mc.map(m => m.c.ovExp)) },
+  { k: 'signed', h: 'Latest owner-signed', t: "Latest owner's signature date on a HUD renewal action", v: r => maxOf(r.mc.map(m => m.c.signed)) },
+  { k: 'loan', h: 'FHA loan', t: 'FHA-insured loan type (HUD Section of the Act)', v: r => loanText(r.p) },
+  { k: 'lih', h: 'LIHTC alloc. / PIS', t: 'Latest tax-credit allocation year / placed-in-service year', v: r => hasLih(r.p) ? (r.p.lih.lastAlloc ?? r.p.lih.lastPis) : null, f: (v, r) => lihHtml(r.p) },
+  { k: 'y15', h: 'Year 15', t: 'Year the LIHTC compliance period ends (latest placed-in-service year + 14)', n: 1, v: r => hasLih(r.p) ? r.p.lih.y15 : null, f: (v, r) => y15Html(r.p) },
+  { k: 'zone', h: '2027 QCT/DDA', t: 'Qualified census tract / difficult development area for 2027 (LIHTC basis boost)', v: r => zoneText(r.p) },
+  { k: 'owner', h: 'Owner', t: 'Owner entity in HUD\'s property file (usually a single-asset LLC or LP)', v: r => r.p.ow?.name || r.p.owner || '' },
+  { k: 'own', h: 'Owned since', t: "HUD's ownership effective date: when the current owner entity took over", v: r => r.p.ownSince || '' },
+  { k: 'spon', h: 'Owner group', t: 'Likely sponsor: owner entities sharing an email domain or mailing address', v: r => sponLabel(r.p.spon) },
+  { k: 'loc', h: 'Location', t: 'How precisely HUD locates the property on the map', v: r => r.p.lc, f: (v, r) => v === 'P' ? 'Precise' : v === 'A' ? '<span class="b out">Approx. (HUD)</span>' : v === 'C' ? '<span class="b out">ZIP centroid</span>' : '<span class="flag">None</span>' },
 ];
 const uniq = a => [...new Set(a)];
 const minOf = a => a.filter(Boolean).sort()[0] || '';
@@ -456,7 +456,8 @@ function renderTable() {
   const rows = sortRows(rowsFor(state.view, state.result.out), cols);
   state.rows = rows;
   const s = state.sort || (state.center ? { k: 'dist', dir: 1 } : { k: 'name', dir: 1 });
-  $('#tbl thead').innerHTML = '<tr>' + cols.map(c => `<th data-k="${c.k}" class="${c.n ? 'num' : ''}">${esc(c.h)}${s.k === c.k ? (s.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
+  $('#tbl thead').innerHTML = '<tr>' + cols.map(c => `<th data-k="${c.k}" class="${c.n ? 'num' : ''}" title="${esc(c.t ? c.t + '. Click to sort' : 'Click to sort')}">${esc(c.h)}${s.k === c.k ? (s.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
+  renderEmpty(rows.length);
   let offset = 0;
   if (state.selected && rows.length > MAX_ROWS) {
     const at = rows.findIndex(r => r.p.id === state.selected);
@@ -470,12 +471,61 @@ function renderTable() {
   $('#more').textContent = rows.length > MAX_ROWS ? `Showing rows ${(offset + 1).toLocaleString()}–${(offset + shown.length).toLocaleString()} of ${rows.length.toLocaleString()}. Narrow the search or export to get all rows.` : '';
 }
 
+function renderEmpty(n) {
+  const el = $('#empty');
+  el.hidden = n > 0;
+  if (n > 0) return;
+  const { unlocated } = state.result, nf = activeFilters().length;
+  const why = state.center ? `No properties within <b>${state.radius} mi</b> of ${esc(state.center.label)}${nf ? ' match the current filters' : ''}.` : nf ? 'No properties match the current filters.' : 'No properties to show.';
+  const fix = [state.center && '<button class="link" data-act="radius">Widen the radius</button>', nf && '<button class="link" data-act="reset">Reset the filters</button>',
+    state.center && '<button class="link" data-act="clear">Search nationwide</button>'].filter(Boolean).join(' · ');
+  el.innerHTML = `${why}${unlocated ? ` ${unlocated.toLocaleString()} matching records have no map location, so no radius can include them.` : ''}<div class="mt">${fix}</div>`;
+}
+/* Active filters as removable chips above the table (defaults are not listed) */
+function activeFilters() {
+  const f = state.f, d = defaults(), A = [];
+  const add = (label, clear) => A.push({ label, clear });
+  const few = (set, lab, max = 2) => set.size === 0 ? 'none' : [...set].slice(0, max).map(lab).join(', ') + (set.size > max ? ` +${set.size - max}` : '');
+  const setDiff = (k, name, lab) => { if (f[k].size !== d[k].size) add(`${name}: ${few(f[k], lab)}`, () => { f[k] = d[k]; }); };
+  if (f.st.size !== d.st.size) add(f.st.size <= 3 ? few(f.st, c => STATE_NAMES[c] || c || 'Unknown state', 3) : `${f.st.size} states`, () => { f.st = d.st; });
+  if (f.city.size) add(f.city.size === 1 ? cityLabel([...f.city][0]) : `${f.city.size} cities`, () => { f.city = new Set(); });
+  if (f.spon.size) add('Owner group ' + [...f.spon].map(sponLabel).join('; '), () => { f.spon = new Set(); });
+  if (f.unitsMin != null || f.unitsMax != null) add(`${f.unitsMin ?? 0}–${f.unitsMax ?? '∞'} units`, () => { f.unitsMin = f.unitsMax = null; });
+  if (f.ownMin != null || f.ownMax != null) add(`Owned since ${f.ownMin ?? '…'}–${f.ownMax ?? '…'}`, () => { f.ownMin = f.ownMax = null; });
+  if (f.oldCons) add('Incl. old contracts', () => { f.oldCons = false; });
+  setDiff('doc', 'Type', v => v < 0 ? 'Unknown' : D.doc[v]); setDiff('program', 'Program', v => v < 0 ? 'Unknown' : D.program[v]);
+  setDiff('status', 'Status', v => v < 0 ? 'Unknown' : D.status[v]); setDiff('ropt', 'Renewal option', v => v < 0 ? 'None' : D.ropt[v].split(':')[0]);
+  if (f.ovMin != null || f.ovMax != null) add(`Overall exp. ${f.ovMin ?? '…'}–${f.ovMax ?? '…'}${f.ovUnknown ? ' + unknown' : ''}`, () => { f.ovMin = f.ovMax = null; f.ovUnknown = false; });
+  if (f.yearMin != null || f.yearMax != null) add(`Term start ${f.yearMin ?? '…'}–${f.yearMax ?? '…'}`, () => { f.yearMin = f.yearMax = null; });
+  if (!f.yearUnknown) add('Known start date only', () => { f.yearUnknown = true; });
+  if (f.minTerm) add({ 13: 'Term > 1 yr', 60: 'Term 5+ yrs', 240: 'Term 20+ yrs' }[f.minTerm], () => { f.minTerm = 0; });
+  if (f.bed.size !== d.bed.size) add(`Bedrooms: ${few(f.bed, b => b === 0 ? 'studio' : b === 5 ? '5+' : b, 6)}`, () => { f.bed = d.bed; });
+  if (f.basis.size !== d.basis.size) add(`Rent basis: ${few(f.basis, b => BASIS_SHORT[b], 4)}`, () => { f.basis = d.basis; });
+  if (f.loc.size !== d.loc.size) add(`Location: ${few(f.loc, v => ({ P: 'precise', A: 'approx.', C: 'ZIP centroid' })[v], 3)}`, () => { f.loc = d.loc; });
+  if (f.propOnly) add('Incl. property-only records', () => { f.propOnly = false; });
+  if (f.soa.size !== d.soa.size) add(`Loan type: ${few(f.soa, v => v < 0 ? 'no FHA loan' : D.soa[v])}`, () => { f.soa = d.soa; });
+  if (f.tcOnly) add('Loan includes LIHTC (TC)', () => { f.tcOnly = false; });
+  if (f.lih !== 'any') add(f.lih === 'yes' ? 'LIHTC matched' : 'No LIHTC match', () => { f.lih = 'any'; });
+  if (f.y15Min != null || f.y15Max != null) add(`Year 15 ${f.y15Min ?? '…'}–${f.y15Max ?? '…'}`, () => { f.y15Min = f.y15Max = null; });
+  if (f.allocBefore != null) add(`No LIHTC allocation since ${f.allocBefore}`, () => { f.allocBefore = null; });
+  if (f.zone !== 'any') add({ qct: 'In a 2027 QCT', dda: 'In a 2027 DDA', either: 'In a 2027 QCT or DDA' }[f.zone], () => { f.zone = 'any'; });
+  return A;
+}
+function renderActive() {
+  const A = state.active = activeFilters(), el = $('#active');
+  el.hidden = !A.length;
+  el.innerHTML = A.length ? '<span class="muted">Filters:</span>' + A.map((a, i) => `<span class="chip">${esc(a.label)}<button class="link" data-af="${i}" title="Remove this filter" aria-label="Remove filter ${esc(a.label)}">×</button></span>`).join('')
+    + '<button class="link" id="afReset">Reset all</button>' : '';
+  $('#filtersBtn').textContent = A.length ? `Filters (${A.length})` : 'Filters';
+}
+
 /* ---------- refresh ---------- */
 function refresh() {
   state.result = compute();
   const { out, unlocated, hiddenPropOnly, hiddenOld, hiddenOldProps } = state.result;
   drawMarkers(out);
   drawHilite();
+  renderActive();
   renderTable();
   const nLines = out.reduce((a, r) => a + r.mc.reduce((b, m) => b + m.lines.length, 0), 0);
   const stSel = state.f.st.size !== STATE_N.size ? [...state.f.st] : null;
@@ -484,10 +534,12 @@ function refresh() {
   const inSp = state.f.spon.size ? 'owner group ' + [...state.f.spon].map(sponLabel).join('; ') : null;
   const inArea = [inSp, inCity, inSt].filter(Boolean).join(' · ') || null;
   const where = state.center ? ` within ${state.radius} mi of ${state.center.label}${inArea ? ` (${inArea} only)` : ''}` : inArea ? ` in ${inArea}` : ' nationwide';
-  let msg = `${out.length.toLocaleString()} properties · ${nLines.toLocaleString()} rent lines${where}`;
-  if (unlocated) msg += ` · ${unlocated.toLocaleString()} matching records nationwide have no map location, so no radius can include them (find them by name, ID or contract #)`;
-  if (hiddenPropOnly && !state.f.propOnly) msg += ` · ${hiddenPropOnly.toLocaleString()} property-only records hidden`;
-  if (hiddenOld) msg += ` · ${hiddenOld.toLocaleString()} old rent-file-only contracts hidden${hiddenOldProps ? ` (${hiddenOldProps.toLocaleString()} properties have only old contracts)` : ''}`;
+  const pl = (n, one, many = one + 's') => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+  let msg = `${pl(out.length, 'property', 'properties')} · ${pl(nLines, 'rent line')}${where}`;
+  if (unlocated) msg += ` · ${unlocated.toLocaleString()} matching records have no map location, so no radius can include them (find them by name, ID or contract #)`;
+  const notShown = [hiddenPropOnly && !state.f.propOnly && `${hiddenPropOnly.toLocaleString()} properties with no HUD contract`,
+    hiddenOld && `${hiddenOld.toLocaleString()} old contracts${hiddenOldProps ? ` (${hiddenOldProps.toLocaleString()} properties have only old ones)` : ''}`].filter(Boolean);
+  if (notShown.length) msg += ` · not shown: ${notShown.join(', ')}; see Filters`;
   $('#summary').textContent = msg;
   updateFilterCounts();
   writeHash();
@@ -911,12 +963,14 @@ function writeHash() {
   else if (state.center) { h.set('lat', state.center.lat.toFixed(6)); h.set('lon', state.center.lon.toFixed(6)); }
   if (state.center) h.set('r', state.radius);
   if (state.selected && state.selected !== state.center?.pid) h.set('sel', state.selected);
+  if (state.view === 'props') h.set('v', 'props');
   try { history.replaceState(null, '', h.toString() ? '#' + h : location.pathname + location.search); } catch { /* some file:// contexts */ }
 }
 function readHash() {
   const h = new URLSearchParams(location.hash.slice(1));
   hashLock = true;
   if (h.get('r')) { state.radius = +h.get('r'); syncRadiusUI(); }
+  if (h.get('v') === 'props') setView('props');
   const p = h.get('pid') && byId.get(h.get('pid'));
   if (p) pickProperty(p);
   else if (h.get('lat') && h.get('lon')) setCenter({ lat: +h.get('lat'), lon: +h.get('lon'), label: `Pin (${h.get('lat')}, ${h.get('lon')})` });
@@ -924,6 +978,11 @@ function readHash() {
   if (s) select(s);
   hashLock = false;
   writeHash();
+}
+function setView(v) {
+  state.view = v; state.sort = null;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
+  renderTable(); writeHash();
 }
 function syncRadiusUI() {
   const opt = [...$('#radius').options].find(o => +o.value === state.radius);
@@ -1098,8 +1157,7 @@ $('#targetBtn').onclick = () => {
   f.status = new Set([...COUNTS.status.keys()].filter(k => D.status[k] === 'Active'));
   f.doc = new Set([...COUNTS.doc.keys()].filter(k => D.doc[k] === 'HAP'));
   f.lih = 'yes'; f.y15Max = new Date().getFullYear() + 1;
-  state.view = 'props'; document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === 'props'));
-  buildFilters(); refresh();
+  buildFilters(); refresh(); setView('props');
 };
 $('#propOnly').onchange = e => { state.f.propOnly = e.target.checked; refresh(); };
 $('#oldCons').onchange = e => { state.f.oldCons = e.target.checked; refresh(); };
@@ -1108,9 +1166,27 @@ document.querySelectorAll('[data-all],[data-none]').forEach(b => b.onclick = () 
   const k = b.dataset.all || b.dataset.none;
   state.f[k] = b.dataset.all ? allOf(k) : new Set(); buildFilters(); refresh();
 });
-document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === b));
-  state.view = b.dataset.view; state.sort = null; renderTable();
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => setView(b.dataset.view));
+$('#active').onclick = e => {
+  if (e.target.id === 'afReset') state.f = defaults();
+  else if (e.target.dataset.af != null) state.active[+e.target.dataset.af].clear();
+  else return;
+  buildFilters(); refresh();
+};
+$('#empty').onclick = e => {
+  const act = e.target.dataset.act; if (!act) return;
+  if (act === 'reset') { state.f = defaults(); buildFilters(); refresh(); }
+  else if (act === 'clear') { $('#q').value = ''; setCenter(null); map.setView([39.5, -98.35], 4); }
+  else if (act === 'radius') { const next = [...$('#radius').options].map(o => +o.value).find(v => v > state.radius); if (next) { state.radius = next; syncRadiusUI(); setRadius(next); } }
+};
+$('#filtersBtn').onclick = () => {
+  const on = document.body.classList.toggle('filters-open');
+  if (on) $('#filtersBlock').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+document.addEventListener('keydown', e => {  // Escape closes suggestions, then the property panel
+  if (e.key !== 'Escape' || $('#about').open) return;
+  if (!$('#sugg').hidden) { $('#sugg').hidden = true; return; }
+  if (!$('#detail').hidden) $('#closeDetail').click();
 });
 $('#tbl thead').addEventListener('click', e => {
   const th = e.target.closest('th'); if (!th) return;
@@ -1136,5 +1212,5 @@ readHash();
 $('#loading').remove();
 
 // Exposed for console checks and automated tests.
-window.HUDMAP = { state, map, props, cons, lines, byId, D, compute, defaults, setCenter, setRadius, pickProperty, select, refresh, rowsFor, haversine, localMatches, linesTable, propsTable };
+window.HUDMAP = { state, map, props, cons, lines, byId, D, compute, defaults, setCenter, setRadius, setView, pickProperty, select, refresh, rowsFor, haversine, localMatches, linesTable, propsTable, activeFilters };
 })();

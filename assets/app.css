@@ -67,10 +67,24 @@ table { border-collapse: collapse; width: 100%; font-size: 12px; }
 th, td { padding: 4px 8px; border-bottom: 1px solid #eef0f3; white-space: nowrap; text-align: left; }
 th { position: sticky; top: 0; background: #f8f9fb; font-weight: 600; cursor: pointer; z-index: 1; }
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* First two columns (distance, property) stay put while the wide table scrolls sideways */
+#tbl th:nth-child(1), #tbl td:nth-child(1) { position: sticky; left: 0; width: 52px; min-width: 52px; z-index: 2; }
+#tbl th:nth-child(2), #tbl td:nth-child(2) { position: sticky; left: 52px; z-index: 2; box-shadow: inset -1px 0 0 var(--line); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+#tbl th:nth-child(1), #tbl th:nth-child(2) { z-index: 3; }
+#tbl tbody tr { background: #fff; }
+#tbl td:nth-child(-n+2) { background: inherit; }
 tbody tr { cursor: pointer; }
 tbody tr:hover, tbody tr.hov { background: #eef4ff; }
 tbody tr.sel { background: #fff1bf; }
 tbody tr.sel td:first-child { box-shadow: inset 4px 0 0 #b42318; }
+#tbl tbody tr.sel td:nth-child(2) { box-shadow: inset -1px 0 0 var(--line); }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+.empty b { color: var(--ink); }
+.active { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--line); font-size: 12px; background: #fbfcfe; }
+.active .chip { background: #eaf0fb; border-color: #c9d7f0; color: #1d3b73; }
+.active .chip .link { font-size: 14px; line-height: 1; padding: 0 2px; }
+.mobile-only { display: none; }
+:is(.btn, .tab, .link, input, select, summary, th):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 tbody tr.sel.flash { animation: rowflash 1.4s ease-out; }
 @keyframes rowflash { 0%, 35% { background: #ffd24d; } 100% { background: #fff1bf; } }
 td.wrap { white-space: normal; min-width: 180px; }
@@ -110,6 +124,7 @@ td.wrap { white-space: normal; min-width: 180px; }
 .legend i.hollow { background: #fff !important; border: 2px dashed var(--muted); width: 10px; height: 10px; }
 
 .loading { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(246,247,249,.92); font-size: 15px; z-index: 5000; }
+.loading small { display: block; margin-top: 8px; font-size: 12.5px; color: var(--muted); max-width: 360px; text-align: center; }
 dialog { max-width: 760px; border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; }
 dialog h3 { margin: 14px 0 4px; font-size: 14px; }
 dialog p, dialog li { font-size: 12.5px; }
@@ -129,11 +144,25 @@ dialog p, dialog li { font-size: 12.5px; }
 .resizing.res-row, .resizing.res-row * { cursor: row-resize !important; }
 
 @media (max-width: 900px) {
+  /* Phones: search, then the map and table; filters open on demand below them */
   .split { display: none; }
-  .layout { grid-template-columns: minmax(0, 1fr); height: auto; }
-  .side { max-height: none; }
-  .main { grid-template-rows: 380px auto; }
+  .top { gap: 10px; padding: 0 12px; }
+  .top .asof { display: none; }
+  .brand { white-space: nowrap; }
+  .layout { display: flex; flex-direction: column; height: auto; }
+  .side { display: contents; }
+  .block { background: var(--panel); }
+  .side > .block:first-child { order: 0; }
+  .main { order: 1; grid-template-rows: 60vh auto; }
+  #filtersBlock { order: 2; display: none; border-top: 4px solid var(--line); }
+  .filters-open #filtersBlock { display: block; }
+  #exportBlock { order: 3; }
+  .mobile-only { display: inline-block; }
+  .filters-open #filtersBtn { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .results-head { flex-wrap: wrap; gap: 6px 10px; }
+  .summary { flex-basis: 100%; order: 5; }
   .tablewrap { max-height: 60vh; }
+  .chk { padding: 5px 0; }
   .detail { position: fixed; top: 44px; width: 100%; }
 }
 
