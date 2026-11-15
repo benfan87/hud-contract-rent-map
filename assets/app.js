@@ -19,7 +19,7 @@ const props = H.P.map((p, i) => ({
 }));
 for (const p of props) p.lc = !p.loc ? 'N' : p.loc === 'C' ? 'C' : (p.loc === 'R' || p.loc === '4') ? 'P' : 'A';
 // Financing, LIHTC and 2027 QCT/DDA (tools/merge_fha.py, tools/merge_lihtc.py, tools/build_qct_dda.py)
-for (const p of props) { p.loans = []; p.ownSince = H.P[p.i][19] || null; p.lih = null; p.qct = null; p.dda = null; }
+for (const p of props) { p.loans = []; p.ownSince = H.P[p.i][19] || null; p.ownYear = p.ownSince ? +p.ownSince.slice(0, 4) : null; p.lih = null; p.qct = null; p.dda = null; }
 for (const f of (H.F || [])) props[f[0]].loans.push({ fha: f[1], soa: f[2], soaCode: f[3], primary: f[4], insured: f[5], initEnd: f[6], finalEnd: f[7],
   amt: f[8], maturity: f[9], rate: f[10], upb: f[11], holder: dict('lender', f[12]), servicer: dict('lender', f[13]), te: f[14], tc: f[15], term: f[16] });
 for (const p of props) p.loans.sort((a, b) => b.primary - a.primary);
@@ -67,7 +67,7 @@ const cons = H.C.map((c, i) => ({
   i, p: c[0], no: c[1], status: c[2], program: c[3], group: c[4], pcat: c[5], doc: c[6], units: c[7], maxUnits: c[8],
   eff: c[9], curExp: c[10], ovExp: c[11], term: c[12], ropt: c[13], rstat: c[14], rexp: c[15], rfinal: c[16],
   pct: c[17], band: c[18], rtype: c[19], signed: c[20], signedYear: c[21], signedBad: c[22], rwCur: c[23], rwOv: c[24], lines: [],
-  effYear: c[9] ? +c[9].slice(0, 4) : null,
+  effYear: c[9] ? +c[9].slice(0, 4) : null, ovYear: c[11] ? +c[11].slice(0, 4) : null,
 }));
 // Old contract: number only in HUD's rent/UA file, not in HUD's active Section 8 contract list (no type, program,
 // status or dates). Usually a predecessor contract that a renewal or combined contract replaced.
@@ -115,12 +115,14 @@ const allOf = k => new Set((k === 'soa' ? SOA_N : k === 'st' ? STATE_N : COUNTS[
 const defaults = () => ({
   doc: allOf('doc'), program: allOf('program'), status: allOf('status'), ropt: allOf('ropt'),
   yearMin: null, yearMax: null, yearUnknown: true, minTerm: 0,  // contract-term effective year + minimum length (months)
+  ovMin: null, ovMax: null, ovUnknown: false,  // overall contract expiration year (unknown dates are left out while a range is set)
+  ownMin: null, ownMax: null,  // ownership effective year (properties without a date are left out while a range is set)
   bed: new Set([0, 1, 2, 3, 4, 5]), basis: new Set(['V', 'R', 'E', 'U']), loc: new Set(['P', 'A', 'C']), propOnly: false, oldCons: false,
   st: allOf('st'), city: new Set(), spon: new Set(), unitsMin: null, unitsMax: null,
   soa: allOf('soa'), tcOnly: false, lih: 'any', lihPossible: false, y15Min: null, y15Max: null, allocBefore: null, zone: 'any',
 });
 const state = { f: defaults(), center: null, radius: 3, view: 'lines', sort: null, selected: null, pinMode: false, result: null };
-const PSEUDO = { doc: -1, program: -1, status: -1, ropt: -1, effYear: null, term: null };
+const PSEUDO = { doc: -1, program: -1, status: -1, ropt: -1, effYear: null, ovYear: null, term: null };
 
 /* ---------- filtering ---------- */
 function contractOK(c) {
@@ -132,6 +134,10 @@ function contractOK(c) {
     if (!ok('doc') || !ok('program') || !ok('status') || !ok('ropt')) return false;
   }
   if (f.minTerm && !(c.term >= f.minTerm)) return false;
+  if (f.ovMin != null || f.ovMax != null) {
+    if (c.ovYear == null) { if (!f.ovUnknown) return false; }
+    else if ((f.ovMin != null && c.ovYear < f.ovMin) || (f.ovMax != null && c.ovYear > f.ovMax)) return false;
+  }
   if (c.effYear == null) return f.yearUnknown;
   return (f.yearMin == null || c.effYear >= f.yearMin) && (f.yearMax == null || c.effYear <= f.yearMax);
 }
@@ -144,6 +150,10 @@ function propOK(p) {
   if (f.unitsMin != null || f.unitsMax != null) {
     const u = pSize(p);
     if (u == null || (f.unitsMin != null && u < f.unitsMin) || (f.unitsMax != null && u > f.unitsMax)) return false;
+  }
+  if (f.ownMin != null || f.ownMax != null) {
+    const y = p.ownYear;
+    if (y == null || (f.ownMin != null && y < f.ownMin) || (f.ownMax != null && y > f.ownMax)) return false;
   }
   if (f.soa.size !== SOA_N.size && !p.soaKeys.some(k => f.soa.has(k))) return false;
   if (f.tcOnly && !p.loans.some(l => l.tc)) return false;
@@ -399,12 +409,14 @@ const PROP_COLS = [
   { k: 'mix', h: 'Bedroom mix (contract units)', v: r => bedMix(r.mc) },
   { k: 'best', h: 'Best rent basis', v: r => BASIS_ORDER[r.best] ?? 9, f: (v, r) => badge(r.best) },
   { k: 'cur', h: 'Next current exp.', v: r => minOf(r.mc.map(m => m.c.curExp)) },
+  { k: 'ov', h: 'Next overall exp.', v: r => minOf(r.mc.map(m => m.c.ovExp)) },
   { k: 'signed', h: 'Latest owner-signed', v: r => maxOf(r.mc.map(m => m.c.signed)) },
   { k: 'loan', h: 'FHA loan', v: r => loanText(r.p) },
   { k: 'lih', h: 'LIHTC alloc. / PIS', v: r => hasLih(r.p) ? (r.p.lih.lastAlloc ?? r.p.lih.lastPis) : null, f: (v, r) => lihHtml(r.p) },
   { k: 'y15', h: 'Year 15', n: 1, v: r => hasLih(r.p) ? r.p.lih.y15 : null, f: (v, r) => y15Html(r.p) },
   { k: 'zone', h: '2027 QCT/DDA', v: r => zoneText(r.p) },
   { k: 'owner', h: 'Owner', v: r => r.p.ow?.name || r.p.owner || '' },
+  { k: 'own', h: 'Owned since', v: r => r.p.ownSince || '' },
   { k: 'spon', h: 'Owner group', v: r => sponLabel(r.p.spon) },
   { k: 'loc', h: 'Location', v: r => r.p.lc, f: (v, r) => v === 'P' ? 'Precise' : v === 'A' ? '<span class="b out">Approx. (HUD)</span>' : v === 'C' ? '<span class="b out">ZIP centroid</span>' : '<span class="flag">None</span>' },
 ];
@@ -679,6 +691,8 @@ function buildFilters() {
   $('#tcOnly').checked = f.tcOnly; $('#lih').value = f.lih; $('#lihPossible').checked = f.lihPossible; $('#zone').value = f.zone;
   for (const k of ['y15Min', 'y15Max', 'allocBefore']) $('#' + k).value = f[k] ?? '';
   $('#yearMin').value = f.yearMin ?? ''; $('#yearMax').value = f.yearMax ?? ''; $('#yearUnknown').checked = f.yearUnknown;
+  $('#ovMin').value = f.ovMin ?? ''; $('#ovMax').value = f.ovMax ?? ''; $('#ovUnknown').checked = f.ovUnknown;
+  $('#ownMin').value = f.ownMin ?? ''; $('#ownMax').value = f.ownMax ?? '';
   $('#minTerm').value = String(f.minTerm);
   $('#propOnly').checked = f.propOnly;
   $('#oldCons').checked = f.oldCons;
@@ -689,9 +703,10 @@ function updateFilterCounts() {
     const total = COUNTS[k].size;
     $(`#f-${k}-n`).textContent = f[k].size === total ? '(all)' : `(${f[k].size} of ${total})`;
   }
-  const y = f.yearMin == null && f.yearMax == null ? 'any year' : `${f.yearMin ?? '…'}–${f.yearMax ?? '…'}`;
+  const y = f.yearMin == null && f.yearMax == null ? 'any start' : `start ${f.yearMin ?? '…'}–${f.yearMax ?? '…'}`;
   const len = { 13: ', > 1 yr', 60: ', 5+ yrs', 240: ', 20+ yrs' }[f.minTerm] || '';
-  $('#f-year-n').textContent = `(${y}${len}${f.yearUnknown && !f.minTerm ? ', incl. unknown' : ', known only'})`;
+  const ov = f.ovMin == null && f.ovMax == null ? '' : `, overall exp. ${f.ovMin ?? '…'}–${f.ovMax ?? '…'}${f.ovUnknown ? ' + unknown' : ''}`;
+  $('#f-year-n').textContent = `(${y}${len}${f.yearUnknown && !f.minTerm ? ', incl. unknown' : ', known only'}${ov})`;
   const fin = [f.soa.size !== SOA_N.size && `${f.soa.size} loan type${f.soa.size === 1 ? '' : 's'}`, f.tcOnly && 'TC loans',
     f.lih !== 'any' && (f.lih === 'yes' ? 'LIHTC' : 'no LIHTC'), (f.y15Min != null || f.y15Max != null) && `Y15 ${f.y15Min ?? '…'}–${f.y15Max ?? '…'}`,
     f.allocBefore != null && `no alloc. since ${f.allocBefore}`, f.zone !== 'any' && { qct: 'QCT', dda: 'DDA', either: 'QCT/DDA' }[f.zone]].filter(Boolean);
@@ -699,7 +714,8 @@ function updateFilterCounts() {
   const szTxt = f.unitsMin == null && f.unitsMax == null ? '' : `, ${f.unitsMin ?? 0}–${f.unitsMax ?? '∞'} units`;
   const ctTxt = f.city.size ? `, ${f.city.size === 1 ? cityLabel([...f.city][0]) : f.city.size + ' cities'}` : '';
   const spTxt = f.spon.size ? `, owner group ${[...f.spon].map(sponLabel).join('; ')}` : '';
-  $('#f-st-n').textContent = `(${stTxt}${ctTxt}${spTxt}${szTxt})`;
+  const ownTxt = f.ownMin == null && f.ownMax == null ? '' : `, owned since ${f.ownMin ?? '…'}–${f.ownMax ?? '…'}`;
+  $('#f-st-n').textContent = `(${stTxt}${ctTxt}${spTxt}${szTxt}${ownTxt})`;
   $('#f-fin-n').textContent = fin.length ? `(${fin.join(', ')})` : '(any)';
 }
 
@@ -876,12 +892,12 @@ const exportLines = () => download(exportName('rents-by-bedroom'), linesTable())
 function propsTable() {
   const head = ['Distance (mi)', 'HUD property ID', 'Property', 'Address', 'City', 'State', 'ZIP', 'County', 'Location precision', 'Total units',
     'Assisted units (property)', 'Matching contracts', 'All contracts', 'Contract numbers', 'Contract types', 'Programs', 'Statuses',
-    'Bedroom mix (contract units)', 'Best rent basis', 'Next current expiration', 'Latest renewal owner-signature date', 'Owner', 'Management', ...FIN_HEAD, ...OWN_HEAD];
+    'Bedroom mix (contract units)', 'Best rent basis', 'Next current expiration', 'Next overall expiration', 'Latest renewal owner-signature date', 'Owner', 'Management', ...FIN_HEAD, ...OWN_HEAD];
   const rows = sortRows(state.result.out, PROP_COLS).map(r => [
     r.p.dist != null && state.center ? r.p.dist.toFixed(2) : '', r.p.id, r.p.name, r.p.addr, r.p.city, r.p.st, r.p.zip, r.p.county, LOC_CLASS[r.p.lc],
     r.p.total, r.p.assisted, r.mc.length, r.p.cons.length, r.mc.map(m => m.c.no).join('; '), uniq(r.mc.map(m => doc(m.c))).join('; '),
     uniq(r.mc.map(m => programOf(m.c))).join('; '), uniq(r.mc.map(m => statusOf(m.c))).join('; '),
-    bedMix(r.mc), BASIS_SHORT[r.best], minOf(r.mc.map(m => m.c.curExp)), maxOf(r.mc.map(m => m.c.signed)) || UNK, r.p.ow?.name || r.p.owner, r.p.ag?.name || r.p.mgmt, ...finCsv(r.p), ...ownCsv(r.p)]);
+    bedMix(r.mc), BASIS_SHORT[r.best], minOf(r.mc.map(m => m.c.curExp)), minOf(r.mc.map(m => m.c.ovExp)), maxOf(r.mc.map(m => m.c.signed)) || UNK, r.p.ow?.name || r.p.owner, r.p.ag?.name || r.p.mgmt, ...finCsv(r.p), ...ownCsv(r.p)]);
   return [head, ...rows];
 }
 const exportProps = () => download(exportName('properties'), propsTable());
@@ -942,6 +958,8 @@ function renderAbout() {
   <h3>Dates</h3><ul>
   <li><b>Contract-term effective year</b> (filter) = HUD <code>tracs_effective_date</code>, the start of the current contract (start + term months = overall expiration for 92% of contracts). 12-month contracts restart every year, so pair it with a minimum contract length to find newly started long-term contracts.</li>
   <li><b>Renewal owner-signed</b> (shown, not filtered) = HUD <code>owner_submitted_date</code>, the owner's signature on HUD's latest renewal action. For a new renewal contract it usually precedes the start date; for an "Amend Rents" action it is the latest rent change on an older contract. It is not the HAP execution date or when the quoted rent took effect. ${s.signed_valid.toLocaleString()} contracts have a usable date. ${s.signed_invalid} contracts show placeholder or future dates (e.g., 1900-01-02 or 2099) and are treated as unknown.</li>
+  <li><b>Overall contract expiration</b> (filter, and "Next overall exp." on the Properties tab = the earliest overall expiration among a property's matching contracts) = HUD <code>tracs_overall_expiration_date</code>, the end of the whole contract including its remaining option terms; "Next current exp." is only the end of the current term, so look at the overall date for when the contract actually runs out. ${cons.filter(c => c.ovExp).length.toLocaleString()} contracts have one; while an expiration range is set, contracts without a date are left out unless you tick "Include unknown".</li>
+  <li><b>Owned since</b> (Properties tab, filter under Location, size &amp; owner) = HUD <code>ownership_effective_date</code> from the MF Assistance &amp; Section 8 property file: when the current owner entity took over, as HUD records it. ${props.filter(p => p.ownSince).length.toLocaleString()} properties have one; a long-held property (e.g. since the 1980s) is often an untouched original owner, a recent date often a sale or resyndication. Properties without a date are left out while a range is set.</li>
   <li>Contract-term effective / current / overall expiration come from the assistance-contract file (with renewal-file dates shown separately). No reliable last-approved-RCS or market-reset date is published.</li></ul>
   <h3>Locations</h3><ul>
   <li>Coordinates from HUD's <a href="${esc(m.gis_source)}" target="_blank" rel="noopener">Multifamily Properties - Assisted</a> GIS layer (${m.gis_features.toLocaleString()} features, downloaded ${esc(m.gis_downloaded)}), joined by HUD property ID. ${s.loc_precise.toLocaleString()} precise (rooftop/ZIP+4), ${s.loc_approx_hud.toLocaleString()} approximate HUD geocodes (block group/tract/ZIP).</li>
@@ -1027,6 +1045,16 @@ $('#yearMin').onchange = e => { state.f.yearMin = e.target.value ? +e.target.val
 $('#yearMax').onchange = e => { state.f.yearMax = e.target.value ? +e.target.value : null; refresh(); };
 $('#yearUnknown').onchange = e => { state.f.yearUnknown = e.target.checked; refresh(); };
 $('#minTerm').onchange = e => { state.f.minTerm = +e.target.value; refresh(); };
+for (const k of ['ovMin', 'ovMax', 'ownMin', 'ownMax']) $('#' + k).onchange = e => { state.f[k] = e.target.value === '' ? null : +e.target.value; refresh(); };
+$('#ovUnknown').onchange = e => { state.f.ovUnknown = e.target.checked; refresh(); };
+$('#ovPreset').onchange = e => {  // "expires within N years": overall expiration up to and including that year (already-expired contracts stay in)
+  const v = e.target.value; state.f.ovMin = null; state.f.ovMax = v === '' ? null : v === '-' ? null : new Date().getFullYear() + +v;
+  e.target.value = ''; buildFilters(); refresh();
+};
+$('#ownPreset').onchange = e => {
+  const [a, b] = e.target.value.split('-'); state.f.ownMin = a ? +a : null; state.f.ownMax = b ? +b : null;
+  e.target.value = ''; buildFilters(); refresh();
+};
 $('#cityIn').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   e.preventDefault();

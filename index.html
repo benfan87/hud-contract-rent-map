@@ -50,6 +50,12 @@
         <input id="cityIn" type="search" autocomplete="off" placeholder="Type a city, e.g. Phoenix or Mesa AZ, then Enter">
         <div id="cityMsg" class="hint"></div>
         <div id="f-city" class="chips"></div>
+        <div class="grp">Ownership date</div>
+        <div class="row gap"><label class="lbl inline">Owned since</label>
+          <input id="ownMin" type="number" min="1900" max="2030" placeholder="from"><span>to</span><input id="ownMax" type="number" min="1900" max="2030" placeholder="to">
+          <select id="ownPreset" title="Quick ownership-date ranges"><option value="">Preset…</option><option value="-">Any date</option><option value="-1979">Before 1980</option>
+            <option value="1980-1989">1980s</option><option value="1990-1999">1990s</option><option value="2000-2009">2000s</option><option value="2010-2019">2010s</option><option value="2020-">2020 or later</option></select></div>
+        <p class="hint">HUD's ownership effective date: when the current owner entity took over. Properties with no date are left out while a range is set. Shown as "Owned since" on the Properties tab.</p>
         <div class="grp">Owner group</div>
         <div id="f-spon" class="chips"></div>
         <p class="hint">Search an owner, sponsor or email domain (e.g. "mercyhousing"), or open a property and click "Show this group's whole portfolio".</p>
@@ -65,7 +71,15 @@
         <div id="f-program" class="checks"></div></details>
       <details><summary>Contract status <span class="cnt" id="f-status-n"></span></summary><div id="f-status" class="checks"></div></details>
       <details><summary>Renewal option <span class="cnt" id="f-ropt-n"></span></summary><div id="f-ropt" class="checks"></div></details>
-      <details open><summary>Contract-term effective year <span class="cnt" id="f-year-n"></span></summary>
+      <details open><summary>Contract dates <span class="cnt" id="f-year-n"></span></summary>
+        <div class="grp">Overall contract expiration</div>
+        <div class="row gap">
+          <input id="ovMin" type="number" min="1990" max="2080" placeholder="from"><span>to</span><input id="ovMax" type="number" min="1990" max="2080" placeholder="to">
+          <select id="ovPreset" title="Quick expiration ranges"><option value="">Preset…</option><option value="-">Any date</option><option value="2">Within 2 years</option>
+            <option value="5">Within 5 years</option><option value="6">Within 6 years</option><option value="10">Within 10 years</option></select></div>
+        <label class="chk"><input type="checkbox" id="ovUnknown"> Include unknown expiration</label>
+        <p class="hint">HUD's overall expiration: when the whole contract, including remaining option terms, runs out. The current-term date only marks the next renewal step. Sort the Properties tab by "Next overall exp."</p>
+        <div class="grp">Contract-term effective year</div>
         <div class="row gap">
           <input id="yearMin" type="number" min="1970" max="2030" placeholder="from">
           <span>to</span>

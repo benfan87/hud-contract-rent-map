@@ -2,7 +2,9 @@
 
 Search HUD-assisted multifamily properties by name, address, HUD property ID or contract number, or drop a pin.
 Pick a radius to see nearby properties on a map and in a linked table, filter by contract type, program, status,
-renewal option, contract start year and length, bedrooms and rent basis, and export the results to CSV.
+renewal option, contract start year and length, overall contract expiration year, ownership date, bedrooms and rent basis, and
+export the results to CSV. The Properties tab sorts by next current and next overall expiration and by "Owned since" (HUD's
+ownership effective date).
 
 **Data:** HUD Multifamily Assistance & Section 8 Contracts, contract renewal, contract rent / utility allowance and
 property files (HUD publication of 2026-10-06, downloaded 2026-10-27), joined on HUD property ID and contract number.
