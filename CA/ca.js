@@ -1,5 +1,6 @@
-/* California rent screener: rent-study (RCS) conclusions vs HUD Small Area FMRs, and a SAFMR-based screen of every
-   California HUD rent line. The data file (ca_data.enc.js) is encrypted; nothing renders until the password unlocks it. */
+/* California rent screener: rent-study (RCS) conclusions vs HUD Small Area FMRs, and an estimate of market rent for every
+   California HUD rent line from the rent studies near it. The data file (ca_data.enc.js) is encrypted; nothing renders
+   until the password unlocks it. */
 (function () {
 'use strict';
 const $ = (s, el = document) => el.querySelector(s);
@@ -10,9 +11,11 @@ const ok = v => v != null && v !== '' && isFinite(v);
 const money = v => !ok(v) ? '–' : (v < 0 ? '−$' : '$') + Math.abs(Math.round(v)).toLocaleString('en-US');
 const pct = v => !ok(v) ? '–' : Math.round(v * 100) + '%';
 const int = v => !ok(v) ? '–' : Math.round(v).toLocaleString('en-US');
+const mi = v => !ok(v) ? '–' : v < 10 ? v.toFixed(1) : Math.round(v).toString();
 const bedName = b => b === 0 ? 'Studio' : b + 'BR';
 const sgn = v => !ok(v) ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : '';
 const ropCode = r => r ? r.split(':')[0] : '—';
+const titleCase = s => s && s === s.toUpperCase() ? s.toLowerCase().replace(/(^|[\s-])\w/g, c => c.toUpperCase()) : s;
 const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 // Same method as Python's statistics.quantiles (exclusive), used for the build-time numbers.
 const quant = (a, q) => {
@@ -60,25 +63,40 @@ if (savedPw) unlock(savedPw, true); else pwIn.focus();
 function start(D) {
   const M = D.meta, P = D.props, RCS = D.rcs, SAF = D.safmr;
   const pById = new Map(P.map(p => [p.id, p]));
-  for (const r of RCS) {
-    r.p = pById.get(r.id); r.p.rcs = r;
-    r.ratio = median(r.asis.map(x => x.pct).filter(ok));
-    r.asis.forEach((x, i) => { x.renRow = r.ren.length === r.asis.length ? r.ren[i] : r.ren.find(y => y.unit === x.unit && y.sf === x.sf) || null; });
-  }
-  for (const p of P) p.hay = [p.name, p.addr, p.city, p.zip, p.county, p.owner, p.mgmt, p.id].join(' ').toLowerCase();
-  const zipProps = {};
-  for (const p of P) (zipProps[p.zip] = zipProps[p.zip] || []).push(p);
   const today = new Date().toISOString().slice(0, 10);
   const addMonths = n => { const d = new Date(); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
+  const yearAgo = addMonths(-12);
+  for (const p of P) {
+    p.county = titleCase(p.county); p.city = titleCase(p.city);
+    p.hay = [p.name, p.addr, p.city, p.zip, p.county, p.owner, p.mgmt, p.id].join(' ').toLowerCase();
+  }
+  for (const r of RCS) {
+    r.p = pById.get(r.id); r.p.rcs = r;
+    r.ratio = median(r.asis.map(x => x.pct).filter(ok));                                   // vs SAFMR on the study date
+    r.ratio27 = median(r.asis.map(x => ok(x.pct27) ? x.pct27 : x.pct).filter(ok));         // the same dollars vs today's SAFMR
+    r.asis.forEach((x, i) => { x.renRow = r.ren.length === r.asis.length ? r.ren[i] : r.ren.find(y => y.unit === x.unit && y.sf === x.sf) || null; });
+  }
+  // Distance from every property to every study property (miles), nearest first; a property's own study is not "nearby".
+  const R_EARTH = 3958.8, rad = Math.PI / 180;
+  const dist = (a, b) => {
+    const dp = (b.lat - a.lat) * rad, dl = (b.lon - a.lon) * rad;
+    const h = Math.sin(dp / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dl / 2) ** 2;
+    return 2 * R_EARTH * Math.asin(Math.sqrt(h));
+  };
+  for (const p of P) p.near = RCS.filter(r => r.p !== p).map(r => ({ r, d: dist(p, r.p) })).sort((a, b) => a.d - b.d);
+  const zipProps = {};
+  for (const p of P) (zipProps[p.zip] = zipProps[p.zip] || []).push(p);
 
-  // Which studies the market % is learned from
+  // Which studies can be used
   const CAL = {
     all: ['All studies', () => true],
-    y2025: ['Studies dated 2025 or later', r => r.date >= '2025'],
-    y2024: ['Studies dated 2024 or later', r => r.date >= '2024'],
+    m12: ['Studies from the last 12 months', r => r.date >= addMonths(-12)],
+    m24: ['Studies from the last 2 years', r => r.date >= addMonths(-24)],
+    m36: ['Studies from the last 3 years', r => r.date >= addMonths(-36)],
     final: ['Final reports and grids (no prelims)', r => !r.prelim],
   };
-  for (const s of [...new Set(RCS.map(r => r.signer).filter(Boolean))].sort()) CAL['by:' + s] = ['Signed by ' + s, r => r.signer === s];
+  for (const s of [...new Set(RCS.map(r => r.signer).filter(Boolean))].sort()) CAL['by:' + s] = ['Studies signed by ' + s, r => r.signer === s];
+  const studyOk = r => CAL[S.cal][1](r) && ok(r.ratio);
   function calib(setKey) {
     const set = RCS.filter(CAL[setKey][1]).filter(r => ok(r.ratio));
     const ps = set.map(r => r.ratio), byBed = {}, byYear = {};
@@ -98,78 +116,114 @@ function start(D) {
     docCount[d] = (docCount[d] || 0) + 1; ropCount[r] = (ropCount[r] || 0) + 1; ropLabel[r] = c.ropt ? c.ropt.split(': ').slice(1).join(': ') : 'No renewal option on file';
   }
   const ROPTS = Object.keys(ropCount).sort((a, b) => (a === '—') - (b === '—') || a.localeCompare(b));
-  const DEF = () => ({ q: '', county: '', cal: 'all', ratio: Math.round(calib('all').med * 100), byBed: false, rcsMode: 'auto', fee: 5,
-    docs: new Set(['HAP']), ropts: new Set(ROPTS), oldCons: false, exp: '', minUnits: '', minGap: '', minAnnual: '', rcsOnly: false });
+  const DEF = () => ({ q: '', county: '', radius: 5, combine: 'idw', cal: 'all', bedMatch: true, useOwn: true, rcsMode: 'auto',
+    fallback: 'none', ratio: Math.round(calib('all').med * 100), fee: 5,
+    docs: new Set(['HAP']), ropts: new Set(ROPTS), oldCons: false, exp: '', minUnits: '', minGap: '', minAnnual: '', rcsOnly: false, showNoEst: false });
   const S = Object.assign(DEF(), { view: 'props', sel: null, limit: 300,
     sort: { props: { i: 'annual', d: -1 }, lines: { i: 'annual', d: -1 }, rcs: { i: 'date', d: -1 }, safmr: { i: 'props', d: -1 } } });
-  let CALNOW = calib(S.cal);
+  let CALNOW = calib('all'), TOK = 0;
 
   /* ---------- estimate ---------- */
-  function ratioFor(bed) {
-    const r = S.ratio / 100;
-    if (!S.byBed) return r;
-    const b = CALNOW.byBed[Math.min(bed, 4)];
-    return b && b.length >= 3 && CALNOW.med ? r * median(b) / CALNOW.med : r;
-  }
-  const yearAgo = addMonths(-12);
   const modeFor = r => S.rcsMode === 'auto' ? (r.date >= yearAgo ? 'asis' : 'age') : S.rcsMode;
+  const rowK = (x, mode) => mode === 'asis' ? (ok(x.pct27) ? x.pct27 : x.pct) : x.pct;
   const wavg = (rows, f) => { let s = 0, w = 0; for (const x of rows) { const u = x.units || 1; s += f(x) * u; w += u; } return w ? s / w : null; };
+  // A study's market ratio for one bedroom count: its own unit types of that size when it has them, else its median.
+  function studyK(r, bed, forceMatch) {
+    const mode = modeFor(r);
+    const rows = (S.bedMatch || forceMatch) ? r.asis.filter(x => x.bed === bed && ok(rowK(x, mode))) : [];
+    if (rows.length) return { k: wavg(rows, x => rowK(x, mode)), match: true, mode };
+    return { k: mode === 'asis' ? r.ratio27 : r.ratio, match: false, mode };
+  }
+  function refsFor(p) {
+    if (p._tok === TOK) return p._refs;
+    let list = p.near.filter(o => o.d <= S.radius && studyOk(o.r));
+    if (S.combine === 'nearest') list = list.slice(0, 1);
+    p._tok = TOK; p._refs = list;
+    return list;
+  }
+  function combine(list, bed) {
+    const parts = list.map(o => ({ r: o.r, d: o.d, ...studyK(o.r, bed), w: 1 / Math.max(o.d, 0.25) }));
+    let k;
+    if (S.combine === 'median') { k = median(parts.map(x => x.k)); parts.forEach(x => { x.share = null; }); }
+    else if (S.combine === 'nearest') { k = parts[0].k; parts[0].share = 1; }
+    else {
+      const W = parts.reduce((a, x) => a + x.w, 0);
+      k = parts.reduce((a, x) => a + x.k * x.w, 0) / W;
+      parts.forEach(x => { x.share = x.w / W; });
+    }
+    return { k, parts };
+  }
+  const ownStudy = p => S.useOwn && p.rcs && studyOk(p.rcs) ? p.rcs : null;
   function lineEst(p, ln) {
     const saf = ln.s27 ?? ln.fmr, safSrc = ln.s27 != null ? 'SAFMR' : ln.fmr != null ? 'area FMR' : null;
     const gross = ln.rent + ln.ua;
-    let estGross = null, estRent = null, basis = null;
-    const r = p.rcs, mode = r && modeFor(r);
-    if (r && mode !== 'ignore') {
-      const rows = r.asis.filter(x => x.bed === ln.bed && ok(x.gross));
-      if (mode === 'asis' && rows.length) { estRent = wavg(rows, x => x.rcs); basis = 'rcs'; }
-      else if (mode === 'age' && saf && rows.some(x => ok(x.pct))) { estGross = wavg(rows.filter(x => ok(x.pct)), x => x.pct) * saf; basis = 'aged'; }
-      else if (ok(r.ratio) && saf) { estGross = r.ratio * saf; basis = 'pratio'; }
+    let estGross = null, estRent = null, basis = null, k = null, parts = null;
+    const own = ownStudy(p);
+    if (own) {
+      const mode = modeFor(own), rows = own.asis.filter(x => x.bed === ln.bed && ok(x.gross));
+      if (mode === 'asis' && rows.length) { estRent = wavg(rows, x => x.rcs); basis = 'own'; parts = [{ r: own, d: 0, k: null, match: true, mode, share: 1 }]; }
+      else if (saf) { const s = studyK(own, ln.bed, true); k = s.k; estGross = k * saf; basis = 'own'; parts = [{ r: own, d: 0, ...s, share: 1 }]; }
     }
-    if (basis == null && saf) { estGross = ratioFor(ln.bed) * saf; basis = 'ratio'; }
+    if (basis == null && saf) {
+      const refs = refsFor(p);
+      if (refs.length) { const c = combine(refs, ln.bed); k = c.k; parts = c.parts; estGross = k * saf; basis = 'near'; }
+      else if (S.fallback === 'state') { k = S.ratio / 100; estGross = k * saf; basis = 'state'; }
+    }
     if (estRent == null && estGross != null) estRent = estGross - ln.ua;
     if (estGross == null && estRent != null) estGross = estRent + ln.ua;
+    if (k == null && estGross != null && saf) k = estGross / saf;
     const gap = estRent != null ? estRent - ln.rent : null;
-    return { saf, safSrc, gross, curPct: saf ? gross / saf : null, estGross, estRent, gap, annual: gap != null ? gap * ln.units * 12 : null, basis };
+    return { saf, safSrc, gross, curPct: saf ? gross / saf : null, estGross, estRent, gap, annual: gap != null ? gap * ln.units * 12 : null, basis, k, parts };
   }
-  const basisText = (p, e, ln) => {
-    const r = p.rcs, d = r ? r.date.slice(0, 7) : '';
-    return { rcs: `Study ${d}`, aged: `Study ${d}, aged`, pratio: `Study ${d} ratio (${pct(r && r.ratio)})`,
-      ratio: `${pct(ratioFor(ln.bed))} × ${e.safSrc || 'SAFMR'}` }[e.basis] || 'No SAFMR';
-  };
+  const plural = (n, w) => `${n} ${n === 1 ? w : w.replace(/y$/, 'ie') + 's'}`;
+  function basisText(p, e) {
+    if (e.basis === 'own') return `Own study ${p.rcs.date.slice(0, 7)}`;
+    if (e.basis === 'near') return e.parts.length === 1 ? `${e.parts[0].r.name} (${mi(e.parts[0].d)} mi)` : `${plural(e.parts.length, 'study')} within ${S.radius} mi`;
+    if (e.basis === 'state') return `Statewide ${S.ratio}%`;
+    return e.saf ? `No study within ${S.radius} mi` : 'No SAFMR';
+  }
 
   /* ---------- filtering ---------- */
   const conOk = c => (c.status || S.oldCons) && S.docs.has(c.doc || '—') && S.ropts.has(ropCode(c.ropt));
-  let OUT = [], LINES = [], RROWS = [], ZROWS = [];
+  let OUT = [], LINES = [], RROWS = [], ZROWS = [], COV = { n: 0, est: 0, hidden: 0 }, REACH = {};
   function build() {
+    TOK++;
     CALNOW = calib(S.cal);
     const q = S.q.trim().toLowerCase(), cut = S.exp ? addMonths(+S.exp) : null;
-    OUT = []; LINES = [];
+    OUT = []; LINES = []; COV = { n: 0, est: 0, hidden: 0 }; REACH = {};
     for (const p of P) {
       if (S.county && p.county !== S.county) continue;
       if (S.rcsOnly && !p.rcs) continue;
       if (q && !p.hay.includes(q)) continue;
       const okc = p.cons.map(conOk), ls = p.lines.filter(ln => okc[ln.c]);
       if (!ls.length) continue;
-      let U = 0, R = 0, G = 0, SF = 0, GU = 0, GAP = 0, ANN = 0, n = 0;
-      const basis = new Set();
+      let U = 0, R = 0, G = 0, SF = 0, GU = 0, GAP = 0, ANN = 0, n = 0, KU = 0, KW = 0;
+      const bases = new Set();
       for (const ln of ls) {
         const e = ln.e = lineEst(p, ln);
         U += ln.units; R += ln.rent * ln.units;
         if (e.saf) { G += e.gross * ln.units; SF += e.saf * ln.units; }
         if (e.gap != null) { GU += ln.units; GAP += e.gap * ln.units; ANN += e.annual; n++; }
-        basis.add(e.basis);
+        if (ok(e.k)) { KU += e.k * ln.units; KW += ln.units; }
+        bases.add(e.basis);
       }
+      const own = ownStudy(p), refs = refsFor(p), nearest = p.near.find(o => studyOk(o.r)) || null;
       const cs = p.cons.filter((c, i) => okc[i] && ls.some(l => l.c === i));
-      const next = cs.map(c => c.exp).filter(Boolean).sort()[0] || null;
-      const ov = cs.map(c => c.ovExp).filter(Boolean).sort()[0] || null;
-      const row = { p, ls, cs, units: U, rent: U ? R / U : null, curPct: SF ? G / SF : null, gapU: GU ? GAP / GU : null, annual: n ? ANN : null, next, ov,
+      const est = n > 0;
+      const row = { p, ls, cs, units: U, rent: U ? R / U : null, curPct: SF ? G / SF : null, gapU: GU ? GAP / GU : null, annual: est ? ANN : null,
+        k: KW ? KU / KW : null, own, refs, nearest, est,
+        next: cs.map(c => c.exp).filter(Boolean).sort()[0] || null, ov: cs.map(c => c.ovExp).filter(Boolean).sort()[0] || null,
         docs: [...new Set(cs.map(c => c.doc || '—'))].join(', '), ropts: [...new Set(cs.map(c => ropCode(c.ropt)))].join(', '),
-        basis: p.rcs && S.rcsMode !== 'ignore' && [...basis].some(b => b !== 'ratio') ? `Study ${p.rcs.date.slice(0, 7)}${modeFor(p.rcs) === 'age' ? ', aged' : ''}` : `${S.byBed ? 'By-BR %' : S.ratio + '%'} × SAFMR` };
+        basis: bases.has('own') ? `Own study ${p.rcs.date.slice(0, 7)}` : bases.has('near') ? (refs.length === 1 ? `1 study within ${S.radius} mi` : `${refs.length} studies within ${S.radius} mi`)
+          : bases.has('state') ? `Statewide ${S.ratio}%` : `None within ${S.radius} mi` };
       if (cut && !(row.next && row.next <= cut)) continue;
       if (ok(S.minUnits) && U < +S.minUnits) continue;
+      COV.n++; if (est) COV.est++;
+      if (!est && !S.showNoEst) { COV.hidden++; continue; }
       if (ok(S.minGap) && !(row.gapU >= +S.minGap)) continue;
       if (ok(S.minAnnual) && !(row.annual >= +S.minAnnual)) continue;
       OUT.push(row);
+      if (!own) for (const o of refs) REACH[o.r.id] = (REACH[o.r.id] || 0) + 1;
       for (const ln of ls) LINES.push({ p, ln, e: ln.e, c: p.cons[ln.c] });
     }
     RROWS = [];
@@ -195,21 +249,25 @@ function start(D) {
   /* ---------- tables ---------- */
   const C = (k, t, v, o = {}) => ({ k, t, v, ...o });
   const feeOf = a => ok(a) && a > 0 ? a * S.fee / 100 : null;
-  const studyBadge = p => p.rcs ? ` <span class="b rcs" title="Rent study ${esc(p.rcs.date)}">RCS</span>` : '';
+  const studyBadge = p => p.rcs ? ` <span class="b rcs" title="Own rent study ${esc(p.rcs.date)}">RCS</span>` : '';
   const VIEWS = {
     props: { rows: () => OUT, pid: r => r.p.id, cols: [
       C('name', 'Property', r => r.p.name, { f: r => `<b>${esc(r.p.name)}</b>${studyBadge(r.p)}` }),
       C('city', 'City', r => r.p.city), C('county', 'County', r => r.p.county),
       C('units', 'Units', r => r.units, { num: 1, f: r => int(r.units), tip: 'Units on the included rent lines' }),
-      C('docs', 'Contract', r => r.docs), C('ropts', 'Renewal opt.', r => r.ropts, { tip: 'HUD renewal option code; see the filter for names' }),
-      C('next', 'Term ends', r => r.next, { tip: 'Earliest current-term expiration among the included contracts' }),
-      C('ov', 'Overall exp.', r => r.ov),
       C('rent', 'Avg contract rent', r => r.rent, { num: 1, f: r => money(r.rent) }),
       C('curPct', 'Gross % SAFMR', r => r.curPct, { num: 1, f: r => pct(r.curPct), tip: 'Current contract rent + utility allowance, as % of the FY2027 SAFMR (unit-weighted)' }),
-      C('basis', 'Market basis', r => r.basis),
+      C('k', 'Market % used', r => r.k, { num: 1, f: r => pct(r.k), tip: 'Estimated market gross as % of the FY2027 SAFMR, from the studies used (unit-weighted)' }),
       C('gapU', 'Gap / unit / mo', r => r.gapU, { num: 1, f: r => `<span class="${sgn(r.gapU)}">${money(r.gapU)}</span>` }),
       C('annual', 'Annual uplift', r => r.annual, { num: 1, f: r => `<b class="${sgn(r.annual)}">${money(r.annual)}</b>` }),
       C('fee', 'Fee / yr', r => feeOf(r.annual), { num: 1, f: r => money(feeOf(r.annual)), tip: 'Annual uplift × the fee %' }),
+      C('basis', 'Estimate from', r => r.basis),
+      C('nearest', 'Nearest study', r => r.own ? r.own.name : r.nearest && r.nearest.r.name, { tip: 'Nearest rent study at any distance (the property\'s own study when it has one)' }),
+      C('nd', 'Mi', r => r.own ? 0 : r.nearest && r.nearest.d, { num: 1, f: r => r.own ? 'own' : mi(r.nearest && r.nearest.d) }),
+      C('ndate', 'Study date', r => (r.own || (r.nearest && r.nearest.r) || {}).date),
+      C('docs', 'Contract', r => r.docs), C('ropts', 'Renewal opt.', r => r.ropts, { tip: 'HUD renewal option code; see the filter for names' }),
+      C('next', 'Term ends', r => r.next, { tip: 'Earliest current-term expiration among the included contracts' }),
+      C('ov', 'Overall exp.', r => r.ov),
       C('owner', 'Owner', r => r.p.owner), C('otype', 'Owner type', r => r.p.ownerType), C('mgmt', 'Management agent', r => r.p.mgmt),
       C('id', 'HUD ID', r => r.p.id),
     ] },
@@ -223,10 +281,11 @@ function start(D) {
       C('gross', 'Gross', r => r.e.gross, { num: 1, f: r => money(r.e.gross) }),
       C('saf', 'FY2027 SAFMR', r => r.e.saf, { num: 1, f: r => money(r.e.saf) + (r.e.safSrc === 'area FMR' ? ' <span class="est" title="ZIP not in the SAFMR file; area FMR">FMR</span>' : '') }),
       C('curPct', '% SAFMR', r => r.e.curPct, { num: 1, f: r => pct(r.e.curPct) }),
+      C('k', 'Market % used', r => r.e.k, { num: 1, f: r => pct(r.e.k) }),
       C('est', 'Est. market rent', r => r.e.estRent, { num: 1, f: r => money(r.e.estRent), tip: 'Contract-rent basis (net of the current utility allowance)' }),
       C('gap', 'Gap / unit', r => r.e.gap, { num: 1, f: r => `<span class="${sgn(r.e.gap)}">${money(r.e.gap)}</span>` }),
       C('annual', 'Annual', r => r.e.annual, { num: 1, f: r => `<b class="${sgn(r.e.annual)}">${money(r.e.annual)}</b>` }),
-      C('basis', 'Basis', r => basisText(r.p, r.e, r.ln)),
+      C('basis', 'Estimate from', r => basisText(r.p, r.e)),
       C('no', 'Contract', r => r.c.no), C('doc', 'Type', r => r.c.doc || '—'), C('ropt', 'Renewal opt.', r => ropCode(r.c.ropt)),
       C('exp', 'Term ends', r => r.c.exp),
     ] },
@@ -234,6 +293,7 @@ function start(D) {
       C('name', 'Property', r => r.r.name, { f: r => `<b>${esc(r.r.name)}</b>` }),
       C('city', 'City', r => r.p.city),
       C('date', 'Last done', r => r.r.date, { f: r => esc(r.r.date) + (r.r.prelim ? ' <span class="b pre" title="Preliminary report">prelim</span>' : '') }),
+      C('reach', 'Props using it', r => REACH[r.r.id] || 0, { num: 1, tip: 'Properties in the current screen whose estimate draws on this study (within the radius)' }),
       C('studies', 'Studies', r => r.r.history.length, { num: 1, tip: 'Studies on file for this property' }),
       C('signer', 'Signed by', r => r.r.signer), C('client', 'Client', r => r.r.client),
       C('kind', 'Source', r => r.r.kind),
@@ -274,19 +334,21 @@ function start(D) {
       return (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y))) * so.d;
     });
   }
+  let SHOWN = [];
   function renderTable() {
     const V = VIEWS[S.view], so = S.sort[S.view], rows = sorted();
     $('#ctbl thead').innerHTML = '<tr>' + V.cols.map(c => `<th data-k="${c.k}" class="${c.num ? 'num' : ''}"${c.tip ? ` title="${esc(c.tip)}"` : ''}>${esc(c.t)}${so.i === c.k ? `<span class="arr">${so.d > 0 ? ' ▲' : ' ▼'}</span>` : ''}</th>`).join('') + '</tr>';
-    const shown = rows.slice(0, S.limit);
-    $('#ctbl tbody').innerHTML = shown.map((r, i) => {
+    SHOWN = rows.slice(0, S.limit);
+    $('#ctbl tbody').innerHTML = SHOWN.map((r, i) => {
       const id = V.pid(r);
       return `<tr data-i="${i}"${id ? ` data-id="${id}"` : ''}${id && id === S.sel ? ' class="sel"' : ''}>` +
         V.cols.map(c => `<td class="${c.num ? 'num' : ''}">${c.f ? c.f(r) : esc(c.v(r) ?? '–')}</td>`).join('') + '</tr>';
     }).join('');
-    $('#ctbl tbody').rows_ = shown;
     const em = $('#empty');
     em.hidden = rows.length > 0;
-    em.innerHTML = '<b>Nothing matches.</b> Loosen a filter (contract type, renewal option, timing or gap) or clear the search.';
+    em.innerHTML = COV.hidden && S.view !== 'rcs' && S.view !== 'safmr'
+      ? `<b>Nothing to show.</b> ${COV.hidden.toLocaleString()} matching properties have no rent study within ${S.radius} miles. Widen the radius, or turn on "Also list properties with no estimate".`
+      : '<b>Nothing matches.</b> Loosen a filter (contract type, renewal option, timing or gap) or clear the search.';
     $('#more').innerHTML = rows.length > S.limit ? `Showing ${S.limit.toLocaleString()} of ${rows.length.toLocaleString()} rows <button class="btn small" id="moreBtn">Show 300 more</button>` : '';
     renderSummary();
   }
@@ -296,7 +358,8 @@ function start(D) {
       const U = OUT.reduce((a, r) => a + r.units, 0), up = OUT.reduce((a, r) => a + Math.max(0, r.annual || 0), 0);
       const n = OUT.filter(r => r.annual > 0).length;
       t = `${OUT.length.toLocaleString()} properties · ${LINES.length.toLocaleString()} rent lines · ${U.toLocaleString()} units · ${n.toLocaleString()} below the estimate, worth <b>${money(up)}/yr</b>` +
-        (S.fee ? ` (fee at ${S.fee}%: ${money(up * S.fee / 100)}/yr)` : '');
+        (S.fee ? ` (fee at ${S.fee}%: ${money(up * S.fee / 100)}/yr)` : '') +
+        (COV.hidden ? ` · ${COV.hidden.toLocaleString()} more with no study within ${S.radius} mi not listed` : '');
     } else if (S.view === 'rcs') {
       const ps = new Set(RROWS.map(r => r.p.id));
       t = `${RROWS.length} unit types across ${ps.size} properties · latest study per property, as-is conclusions`;
@@ -312,7 +375,7 @@ function start(D) {
   $('#ctbl tbody').addEventListener('click', e => {
     const tr = e.target.closest('tr'); if (!tr) return;
     if (S.view === 'safmr') {
-      const r = $('#ctbl tbody').rows_[+tr.dataset.i];
+      const r = SHOWN[+tr.dataset.i];
       $('#q').value = S.q = r.z; setView('props'); refresh(); return;
     }
     const p = pById.get(tr.dataset.id); if (p) select(p, true);
@@ -324,20 +387,24 @@ function start(D) {
   const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
   const tiles = (svc, attr) => L.tileLayer(`${ESRI}${svc}/MapServer/tile/{z}/{y}/{x}`, { attribution: attr, maxZoom: 19, maxNativeZoom: 16 });
   L.layerGroup([tiles('Canvas/World_Light_Gray_Base', 'Tiles &copy; Esri | HUD Multifamily'), tiles('Canvas/World_Light_Gray_Reference', '')]).addTo(map);
-  const dots = L.layerGroup().addTo(map), ring = L.layerGroup().addTo(map);
+  map.createPane('reach').style.zIndex = 390;   // radius circle and study links sit under the dots
+  const reachRenderer = L.svg({ pane: 'reach' });
+  const dots = L.layerGroup().addTo(map), ring = L.layerGroup().addTo(map), studyDots = L.layerGroup().addTo(map);
   const BANDS = [[500, '#0b5d27', '$500+'], [250, '#1a7f37', '$250–500'], [100, '#5cb270', '$100–250'], [0.5, '#b7dfc1', '$1–100']];
   const gapColor = g => { if (!ok(g)) return '#8b8f98'; for (const [v, c] of BANDS) if (g >= v) return c; return '#c2410c'; };
   const legend = L.control({ position: 'bottomright' });
   legend.onAdd = () => {
     const d = L.DomUtil.create('div', 'legend');
     d.innerHTML = '<b>Gap per unit / month</b><br>' + BANDS.map(([, c, t]) => `<i style="background:${c}"></i>${t}`).join('<br>') +
-      '<br><i style="background:#c2410c"></i>At or above the estimate<br><i style="background:#fff;border:2.5px solid #111"></i>Has a rent study';
+      '<br><i style="background:#c2410c"></i>At or above the estimate<br><i style="background:#8b8f98"></i>No estimate' +
+      '<br><i style="background:#fff;border:2.5px solid #111"></i>Rent study';
     return d;
   };
   legend.addTo(map);
   function drawMarkers() {
-    dots.clearLayers();
-    const list = S.view === 'rcs' ? [...new Map(RROWS.map(r => [r.p.id, { p: r.p, gapU: (OUT.find(o => o.p === r.p) || {}).gapU }])).values()] : OUT;
+    dots.clearLayers(); studyDots.clearLayers();
+    const byP = new Map(OUT.map(r => [r.p, r]));
+    const list = S.view === 'rcs' ? RCS.filter(r => RROWS.some(x => x.r === r)).map(r => byP.get(r.p) || { p: r.p, gapU: null }) : OUT;
     for (const r of list) {
       const p = r.p;
       const m = L.circleMarker([p.lat, p.lon], { radius: p.rcs ? 7 : 5, weight: p.rcs ? 2.5 : 1, color: p.rcs ? '#111' : '#fff',
@@ -346,12 +413,33 @@ function start(D) {
       m.on('click', () => select(p, false));
       dots.addLayer(m);
     }
+    // Every usable study stays visible as a ringed dot, even when its own property is filtered out of the list.
+    if (S.view !== 'rcs') for (const r of RCS) {
+      if (byP.has(r.p) || !studyOk(r)) continue;
+      const m = L.circleMarker([r.p.lat, r.p.lon], { radius: 6, weight: 2.5, color: '#111', fillColor: '#fff', fillOpacity: 0.9 });
+      m.bindTooltip(`${esc(r.name)} · rent study ${esc(r.date)}`);
+      m.on('click', () => select(r.p, false));
+      studyDots.addLayer(m);
+    }
     drawRing();
+  }
+  function selRefs(p) {   // studies the selected property's estimate uses, with distance
+    const own = ownStudy(p);
+    if (own) return [];
+    return refsFor(p);
   }
   function drawRing() {
     ring.clearLayers();
     const p = S.sel && pById.get(S.sel);
-    if (p) L.circleMarker([p.lat, p.lon], { radius: 12, color: '#b42318', weight: 3, fill: false, interactive: false }).addTo(ring);
+    if (!p) return;
+    if (!ownStudy(p)) L.circle([p.lat, p.lon], { renderer: reachRenderer, radius: S.radius * 1609.344, color: '#1f4e99', weight: 1.5, dashArray: '6 6', fillColor: '#1f4e99', fillOpacity: 0.05, interactive: false }).addTo(ring);
+    const refs = selRefs(p);
+    for (const o of refs) {
+      L.polyline([[p.lat, p.lon], [o.r.p.lat, o.r.p.lon]], { renderer: reachRenderer, color: '#1f4e99', weight: 2, opacity: 0.8, interactive: false }).addTo(ring);
+      if (refs.length <= 8) L.tooltip({ permanent: true, direction: 'right', offset: [8, 0], className: 'reftip' })
+        .setLatLng([o.r.p.lat, o.r.p.lon]).setContent(`${esc(o.r.name)} · ${mi(o.d)} mi · ${esc(o.r.date.slice(0, 7))}`).addTo(ring);
+    }
+    L.circleMarker([p.lat, p.lon], { radius: 12, color: '#b42318', weight: 3, fill: false, interactive: false }).addTo(ring);
   }
 
   /* ---------- detail ---------- */
@@ -361,9 +449,41 @@ function start(D) {
     $$('#ctbl tbody tr.sel').forEach(tr => tr.classList.remove('sel'));
     $$(`#ctbl tbody tr[data-id="${p.id}"]`).forEach(tr => tr.classList.add('sel'));
     if (!fromTable) { const tr = $(`#ctbl tbody tr[data-id="${p.id}"]`); if (tr) tr.scrollIntoView({ block: 'nearest' }); }
-    else map.panTo([p.lat, p.lon]);
     drawRing();
     renderDetail(p);
+    // Frame the property and the studies it uses, keeping clear of the detail panel that covers the map's right side.
+    const refs = selRefs(p), padR = Math.min($('#detail').offsetWidth, $('#map').offsetWidth * 0.7) + 20;
+    const pts = [[p.lat, p.lon], ...refs.map(o => [o.r.p.lat, o.r.p.lon])];
+    if (!ownStudy(p)) { const c = L.latLng(p.lat, p.lon).toBounds(S.radius * 1609.344 * 2); pts.push(c.getSouthWest(), c.getNorthEast()); }
+    map.fitBounds(L.latLngBounds(pts), { paddingTopLeft: [20, 20], paddingBottomRight: [padR, 20], maxZoom: 15 });
+  }
+  function sourceSection(p, row) {
+    const own = ownStudy(p), beds = [...new Set(p.lines.map(l => l.bed))].sort((a, b) => a - b);
+    let h = '<h3>Where the estimate comes from</h3>';
+    if (own) {
+      const mode = modeFor(own);
+      return h + `<p class="note">This property's own rent study (${esc(own.date)}, ${esc(own.signer || 'signer unknown')}), ${mode === 'asis' ? 'used as concluded' : 'moved with SAFMR since the study date'}. Its details are below.</p>`;
+    }
+    const refs = refsFor(p);
+    if (!refs.length) {
+      const nearest = p.near.find(o => studyOk(o.r));
+      h += `<p class="note">No rent study within ${S.radius} miles${S.fallback === 'state' ? `, so the statewide ${S.ratio}% is used` : ''}.`;
+      if (nearest) h += ` The nearest is <button class="link" data-goto="${esc(nearest.r.id)}">${esc(nearest.r.name)}</button>, ${mi(nearest.d)} miles away (${esc(nearest.r.date)}).
+        <button class="link" data-widen="${Math.ceil(nearest.d)}">Widen the radius to ${Math.ceil(nearest.d)} miles</button>`;
+      return h + '</p>';
+    }
+    const how = { idw: 'averaged, closer studies counting more (weight = 1 ÷ distance)', median: 'combined by median', nearest: 'nearest study only' }[S.combine];
+    h += `<p class="note">${plural(refs.length, 'rent study')} within ${S.radius} miles, ${how}. Each column is that study's market gross as % of SAFMR for the bedroom count${S.bedMatch ? '; <span class="est">*</span> = the study has no unit of that size, so its median is used' : ' (study medians)'}.</p>`;
+    h += `<div class="scrollx"><table class="dt"><thead><tr><th>Study property</th><th class="num">Mi</th><th>Done</th><th>Signed by</th>${beds.map(b => `<th class="num">${bedName(b)}</th>`).join('')}${S.combine === 'idw' ? '<th class="num">Weight</th>' : ''}</tr></thead><tbody>`;
+    const perBed = Object.fromEntries(beds.map(b => [b, combine(refs, b)]));
+    refs.forEach((o, i) => {
+      h += `<tr><td class="wrap"><button class="link" data-goto="${esc(o.r.id)}">${esc(o.r.name)}</button><div class="subnote">${esc(o.r.p.city)}${o.r.prelim ? ' · prelim' : ''}${modeFor(o.r) === 'age' ? ' · moved with SAFMR' : ''}</div></td>
+        <td class="num">${mi(o.d)}</td><td>${esc(o.r.date)}</td><td>${esc(o.r.signer || '–')}</td>` +
+        beds.map(b => { const x = perBed[b].parts[i]; return `<td class="num">${pct(x.k)}${x.match ? '' : '<span class="est">*</span>'}</td>`; }).join('') +
+        (S.combine === 'idw' ? `<td class="num">${pct(perBed[beds[0]].parts[i].share)}</td>` : '') + '</tr>';
+    });
+    h += `<tr class="tot"><td><b>Used for this property</b></td><td></td><td></td><td></td>${beds.map(b => `<td class="num"><b>${pct(perBed[b].k)}</b></td>`).join('')}${S.combine === 'idw' ? '<td></td>' : ''}</tr></tbody></table></div>`;
+    return h;
   }
   function renderDetail(p) {
     const row = OUT.find(r => r.p === p), r = p.rcs;
@@ -373,23 +493,25 @@ function start(D) {
       <dl class="kv"><dt>HUD property ID</dt><dd>${esc(p.id)}</dd><dt>Owner</dt><dd>${esc(p.owner || '–')}${p.ownerType ? ` <span class="muted">(${esc(p.ownerType)})</span>` : ''}</dd>
       <dt>Management agent</dt><dd>${esc(p.mgmt || '–')}</dd><dt>Units (total / assisted)</dt><dd>${int(p.total)} / ${int(p.assisted)}</dd>
       <dt>SAFMR area</dt><dd>${esc(p.area || 'ZIP not in the SAFMR file')}</dd></dl>`;
-    if (row) h += `<div class="callout">Estimated gap <b class="${sgn(row.gapU)}">${money(row.gapU)}</b> per unit per month · <b class="${sgn(row.annual)}">${money(row.annual)}</b> a year on ${int(row.units)} units` +
-      (S.fee && row.annual > 0 ? ` · fee at ${S.fee}%: <b>${money(feeOf(row.annual))}</b>/yr` : '') + `<div class="subnote">Basis: ${esc(row.basis)}. Changes with the settings on the left.</div></div>`;
-    else h += `<div class="callout muted">Not in the current screen: no rent line passes the filters on the left.</div>`;
-    h += `<h3>Rents vs FY2027 SAFMR</h3><div class="scrollx"><table class="dt"><thead><tr><th>BR</th><th class="num">Units</th><th class="num">Contract</th><th class="num">UA</th><th class="num">Gross</th><th class="num">SAFMR</th><th class="num">% SAFMR</th><th class="num">Est. market</th><th class="num">Gap</th><th>Basis</th><th>Contract</th></tr></thead><tbody>`;
+    if (row && row.est) h += `<div class="callout">Estimated gap <b class="${sgn(row.gapU)}">${money(row.gapU)}</b> per unit per month · <b class="${sgn(row.annual)}">${money(row.annual)}</b> a year on ${int(row.units)} units` +
+      (S.fee && row.annual > 0 ? ` · fee at ${S.fee}%: <b>${money(feeOf(row.annual))}</b>/yr` : '') + `<div class="subnote">From: ${esc(row.basis)}. Changes with the settings on the left.</div></div>`;
+    else if (row) h += `<div class="callout muted">No estimate: no usable rent study within ${S.radius} miles.</div>`;
+    else h += `<div class="callout muted">Not in the current list: no rent line passes the filters on the left${p.lines.length && !S.showNoEst ? ', or it has no estimate' : ''}.</div>`;
+    h += sourceSection(p, row);
+    h += `<h3>Rents vs FY2027 SAFMR</h3><div class="scrollx"><table class="dt"><thead><tr><th>BR</th><th class="num">Units</th><th class="num">Contract</th><th class="num">UA</th><th class="num">Gross</th><th class="num">SAFMR</th><th class="num">% SAFMR</th><th class="num">Market %</th><th class="num">Est. market</th><th class="num">Gap</th><th>Contract</th></tr></thead><tbody>`;
     for (const ln of [...p.lines].sort((a, b) => a.bed - b.bed)) {
       const e = lineEst(p, ln), c = p.cons[ln.c];
       h += `<tr class="${okc[ln.c] ? '' : 'off'}"><td>${bedName(ln.bed)}</td><td class="num">${ln.units}</td><td class="num">${money(ln.rent)}</td><td class="num">${money(ln.ua)}</td><td class="num">${money(e.gross)}</td>
-        <td class="num">${money(e.saf)}${e.safSrc === 'area FMR' ? ' <span class="est">FMR</span>' : ''}</td><td class="num">${pct(e.curPct)}</td><td class="num">${money(e.estRent)}</td>
-        <td class="num ${sgn(e.gap)}">${money(e.gap)}</td><td>${esc(basisText(p, e, ln))}</td><td>${esc(c.no)}</td></tr>`;
+        <td class="num">${money(e.saf)}${e.safSrc === 'area FMR' ? ' <span class="est">FMR</span>' : ''}</td><td class="num">${pct(e.curPct)}</td><td class="num">${pct(e.k)}</td><td class="num">${money(e.estRent)}</td>
+        <td class="num ${sgn(e.gap)}">${money(e.gap)}</td><td>${esc(c.no)}</td></tr>`;
     }
-    h += `</tbody></table></div>`;
-    if (p.lines.some((ln) => !okc[ln.c])) h += `<p class="note">Grey rows are on contracts the filters leave out.</p>`;
+    h += `</tbody></table></div><p class="note">Est. market = market % × SAFMR − UA (contract-rent basis). Gap = est. market − contract rent.${p.lines.some(ln => !okc[ln.c]) ? ' Grey rows are on contracts the filters leave out.' : ''}</p>`;
     if (r) {
-      h += `<h3>Rent study <span class="muted">· ${r.history.length} on file</span></h3>
+      h += `<h3>This property's rent study <span class="muted">· ${r.history.length} on file</span></h3>
         <dl class="kv"><dt>Last done</dt><dd>${esc(r.date)}${r.prelim ? ' <span class="b pre">prelim</span>' : ''}</dd><dt>Signed by</dt><dd>${esc(r.signer || '–')}</dd>
         <dt>Client</dt><dd>${esc(r.client || '–')}</dd><dt>Source</dt><dd>${esc(r.kind)}<br><span class="subnote">${esc(r.file)}</span></dd>
-        <dt>SAFMR compared</dt><dd>${esc(r.vintage)}, ZIP ${esc(r.zip)}</dd><dt>Median % of SAFMR</dt><dd><b>${pct(r.ratio)}</b></dd></dl>`;
+        <dt>SAFMR compared</dt><dd>${esc(r.vintage)}, ZIP ${esc(r.zip)}</dd><dt>Median % of SAFMR</dt><dd><b>${pct(r.ratio)}</b> then · ${pct(r.ratio27)} of FY2027</dd>
+        <dt>Used by</dt><dd>${int(REACH[r.id] || 0)} properties in the current screen (within ${S.radius} mi)</dd></dl>`;
       if (r.note) h += `<p class="note">${esc(r.note)}</p>`;
       h += `<div class="scrollx"><table class="dt"><thead><tr><th>Unit</th><th class="num">SF</th><th class="num">Units</th><th class="num">Contract then</th><th class="num">As is</th><th class="num">Renovated</th><th class="num">UA</th><th class="num">Gross</th><th class="num">SAFMR then</th><th class="num">%</th><th class="num">% FY27</th></tr></thead><tbody>`;
       for (const x of r.asis) h += `<tr><td>${esc(x.unit)}</td><td class="num">${int(x.sf)}</td><td class="num">${int(x.units)}</td><td class="num">${money(x.contract)}</td><td class="num"><b>${money(x.rcs)}</b></td>
@@ -412,6 +534,11 @@ function start(D) {
     $('#detailBody').innerHTML = h;
     $('#detail').hidden = false;
   }
+  $('#detailBody').addEventListener('click', e => {
+    const g = e.target.closest('[data-goto]'), w = e.target.closest('[data-widen]');
+    if (g) { const p = pById.get(g.dataset.goto); if (p) select(p, false); }
+    if (w) { S.radius = +w.dataset.widen; syncControls(); refresh(); drawRing(); const p = pById.get(S.sel); if (p) select(p, false); }
+  });
   $('#closeDetail').addEventListener('click', closeDetail);
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#about').open) closeDetail(); });
   function closeDetail() { $('#detail').hidden = true; S.sel = null; history.replaceState(null, '', location.pathname + location.search); $$('#ctbl tbody tr.sel').forEach(tr => tr.classList.remove('sel')); drawRing(); }
@@ -424,22 +551,25 @@ function start(D) {
   $('#f-doc').innerHTML = DOCS.filter(d => docCount[d]).map(d => `<label class="chk"><input type="checkbox" data-doc="${d}"> ${d === '—' ? 'No contract type on file' : d}<span class="n">${docCount[d]}</span></label>`).join('');
   $('#f-ropt').innerHTML = ROPTS.map(r => `<label class="chk"><input type="checkbox" data-ropt="${esc(r)}"> <span><b>${esc(r)}</b> ${esc(ropLabel[r])}</span><span class="n">${ropCount[r]}</span></label>`).join('');
   function syncControls() {
-    $('#q').value = S.q; county.value = S.county; calSel.value = S.cal; $('#ratio').value = S.ratio; $('#byBed').checked = S.byBed;
-    $('#rcsMode').value = S.rcsMode; $('#fee').value = S.fee; $('#oldCons').checked = S.oldCons; $('#exp').value = S.exp;
-    $('#minUnits').value = S.minUnits; $('#minGap').value = S.minGap; $('#minAnnual').value = S.minAnnual; $('#rcsOnly').checked = S.rcsOnly;
+    $('#q').value = S.q; county.value = S.county; $('#radius').value = S.radius; $('#combine').value = S.combine; calSel.value = S.cal;
+    $('#bedMatch').checked = S.bedMatch; $('#useOwn').checked = S.useOwn; $('#rcsMode').value = S.rcsMode; $('#fallback').value = S.fallback;
+    $('#stateBox').hidden = S.fallback !== 'state'; $('#ratio').value = S.ratio; $('#fee').value = S.fee;
+    $('#oldCons').checked = S.oldCons; $('#exp').value = S.exp; $('#minUnits').value = S.minUnits; $('#minGap').value = S.minGap; $('#minAnnual').value = S.minAnnual;
+    $('#rcsOnly').checked = S.rcsOnly; $('#showNoEst').checked = S.showNoEst;
     $$('[data-doc]').forEach(i => { i.checked = S.docs.has(i.dataset.doc); });
     $$('[data-ropt]').forEach(i => { i.checked = S.ropts.has(i.dataset.ropt); });
   }
   function renderCal() {
     const c = CALNOW;
     $('#ratioVal').textContent = S.ratio + '%';
-    $('#calStats').innerHTML = c.n ? `${c.n} properties: median <b>${pct(c.med)}</b> of the SAFMR in effect on the study date (25th–75th pct ${pct(c.p25)}–${pct(c.p75)}).` : 'No studies in this set.';
+    $('#covStats').textContent = `${COV.est.toLocaleString()} of ${COV.n.toLocaleString()} properties in the screen get an estimate at this radius.`;
+    $('#calStats').innerHTML = c.n ? `The ${c.n} studies in use: median <b>${pct(c.med)}</b> of the SAFMR in effect on the study date (25th–75th pct ${pct(c.p25)}–${pct(c.p75)}).` : 'No studies in this set.';
     const yr = Object.keys(c.byYear).sort(), bd = Object.keys(c.byBed).sort();
     $('#calTables').innerHTML = `<table class="mini"><thead><tr><th>Study year</th><th class="num">Properties</th><th class="num">Median</th><th class="num">25th–75th</th></tr></thead><tbody>` +
       yr.map(y => `<tr><td>${y}</td><td class="num">${c.byYear[y].length}</td><td class="num">${pct(median(c.byYear[y]))}</td><td class="num">${pct(quant(c.byYear[y], 0.25))}–${pct(quant(c.byYear[y], 0.75))}</td></tr>`).join('') +
-      `</tbody></table><table class="mini"><thead><tr><th>Bedrooms</th><th class="num">Properties</th><th class="num">Median</th><th class="num">Ratio used</th></tr></thead><tbody>` +
-      bd.map(b => `<tr><td>${bedName(+b)}</td><td class="num">${c.byBed[b].length}</td><td class="num">${pct(median(c.byBed[b]))}</td><td class="num">${pct(ratioFor(+b))}</td></tr>`).join('') +
-      `</tbody></table><p class="hint">One vote per property: the median of its as-is unit types. A bedroom count needs 3 or more properties to get its own ratio.</p>`;
+      `</tbody></table><table class="mini"><thead><tr><th>Bedrooms</th><th class="num">Properties</th><th class="num">Median</th></tr></thead><tbody>` +
+      bd.map(b => `<tr><td>${bedName(+b)}</td><td class="num">${c.byBed[b].length}</td><td class="num">${pct(median(c.byBed[b]))}</td></tr>`).join('') +
+      `</tbody></table><p class="hint">One vote per property: the median of its as-is unit types, vs the SAFMR on the study date.</p>`;
     $('#f-doc-n').textContent = `${S.docs.size} of ${DOCS.filter(d => docCount[d]).length}`;
     $('#f-ropt-n').textContent = `${S.ropts.size} of ${ROPTS.length}`;
   }
@@ -447,12 +577,14 @@ function start(D) {
   let qT;
   $('#q').addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value; refresh(); }, 180); });
   county.addEventListener('change', () => { S.county = county.value; refresh(); });
+  $('#radius').addEventListener('change', e => { const v = +e.target.value; if (v > 0) { S.radius = v; refresh(); } else syncControls(); });
+  $$('[data-r]').forEach(b => b.addEventListener('click', () => { S.radius = +b.dataset.r; syncControls(); refresh(); }));
   $('#ratio').addEventListener('input', e => { S.ratio = +e.target.value; $('#ratioVal').textContent = S.ratio + '%'; clearTimeout(qT); qT = setTimeout(refresh, 60); });
-  $$('[data-q]').forEach(b => b.addEventListener('click', () => { const v = CALNOW[b.dataset.q]; if (ok(v)) { S.ratio = Math.round(v * 100); syncControls(); refresh(); } }));
-  calSel.addEventListener('change', () => { S.cal = calSel.value; const c = calib(S.cal); if (ok(c.med)) S.ratio = Math.round(c.med * 100); syncControls(); refresh(); });
-  const bind = (id, k, f = x => x) => $(id).addEventListener('change', e => { S[k] = f(e.target.type === 'checkbox' ? e.target.checked : e.target.value); refresh(); });
-  bind('#byBed', 'byBed'); bind('#rcsMode', 'rcsMode'); bind('#fee', 'fee', v => (ok(v) ? +v : 0)); bind('#oldCons', 'oldCons'); bind('#exp', 'exp');
-  bind('#minUnits', 'minUnits'); bind('#minGap', 'minGap'); bind('#minAnnual', 'minAnnual'); bind('#rcsOnly', 'rcsOnly');
+  $$('[data-q]').forEach(b => b.addEventListener('click', () => { const v = calib('all')[b.dataset.q]; if (ok(v)) { S.ratio = Math.round(v * 100); syncControls(); refresh(); } }));
+  const bind = (id, k, f = x => x) => $(id).addEventListener('change', e => { S[k] = f(e.target.type === 'checkbox' ? e.target.checked : e.target.value); syncControls(); refresh(); });
+  bind('#combine', 'combine'); bind('#cal', 'cal'); bind('#bedMatch', 'bedMatch'); bind('#useOwn', 'useOwn'); bind('#rcsMode', 'rcsMode'); bind('#fallback', 'fallback');
+  bind('#fee', 'fee', v => (ok(v) ? +v : 0)); bind('#oldCons', 'oldCons'); bind('#exp', 'exp');
+  bind('#minUnits', 'minUnits'); bind('#minGap', 'minGap'); bind('#minAnnual', 'minAnnual'); bind('#rcsOnly', 'rcsOnly'); bind('#showNoEst', 'showNoEst');
   $('#f-doc').addEventListener('change', e => { const d = e.target.dataset.doc; e.target.checked ? S.docs.add(d) : S.docs.delete(d); refresh(); });
   $('#f-ropt').addEventListener('change', e => { const r = e.target.dataset.ropt; e.target.checked ? S.ropts.add(r) : S.ropts.delete(r); refresh(); });
   $('[data-all="ropt"]').addEventListener('click', () => { S.ropts = new Set(ROPTS); syncControls(); refresh(); });
@@ -476,22 +608,22 @@ function start(D) {
   $('#asof').textContent = `HUD contract rents as of ${M.hud.asof} · FY2027 SAFMRs · ${RCS.length} properties with rent studies (${M.studies} studies)`;
   const vint = M.safmr_vintages.map(v => `${esc(v.label)} (from ${esc(v.eff)})`).join(', ');
   $('#aboutBody').innerHTML = `<h2>How this screen works</h2>
-    <h3>1. What our rent studies concluded, as a % of SAFMR</h3>
+    <h3>1. What each rent study concluded, as a % of SAFMR</h3>
     <p>${RCS.length} California properties have rent comparability studies in the Rent Grid Library (${esc(M.library)}): ${reports} with a PDF report, ${RCS.length - reports} with only the grid workbook (dated by last save).
       For each study's as-is conclusion, gross rent = the concluded contract rent + the study's utility allowance. That is divided by the HUD Small Area FMR for the study's ZIP and bedroom count <i>in effect on the study date</i>,
       including mid-year revisions: ${vint}. Where a grid has no utility allowance, the current HUD allowance is used and marked "HUD".</p>
-    <h3>2. The market %</h3>
-    <p>Each property gets one vote: the median of its as-is unit types. The slider starts at the median of those votes; pick another study set under "Learn from", or move the slider.
-      The spread is wide (25th–75th percentile ${pct(M.calibration.p25)}–${pct(M.calibration.p75)} across all studies), so read the screen as a ranking of where to look, not as a rent conclusion.</p>
+    <h3>2. Nearby studies set each property's market %</h3>
+    <ul><li>For each HUD property, the studies within the radius (default 5 miles, straight-line) are used. With "Match the bedroom count" on, a study contributes its own % for that unit size when it has one, otherwise its median.</li>
+      <li>"Average, closer ones count more" weights each study by 1 ÷ distance (distances under a quarter mile count as a quarter mile). "Median" and "Nearest study only" are the alternatives.</li>
+      <li>"Bring studies to today": a study under 12 months old is used as concluded (its gross rent ÷ today's SAFMR at its ZIP). An older study keeps its % of the SAFMR on its study date, which moves the conclusion with SAFMR growth since then. Either rule can be applied to all studies.</li>
+      <li>A property with its own study uses that study first. Unit types it did not cover use its median.</li>
+      <li>With no study in range, the property gets no estimate unless you choose the statewide % (the slider; it starts at the median of all studies, ${pct(M.calibration.median)}).</li></ul>
     <h3>3. The screen</h3>
     <ul><li>Estimated market gross = market % × the FY2027 SAFMR (effective ${esc(M.safmr_vintages[M.safmr_vintages.length - 1].eff)}) for the property's ZIP and bedroom count.</li>
       <li>Estimated market rent = that minus the line's current utility allowance. Gap = estimated market rent − current contract rent. Annual uplift = gap × units × 12, summed over the property's included lines (lines above the estimate count as negatives).</li>
-      <li>Where a property has a study, by default a study under 12 months old is used as concluded. For an older study, each unit type's own study % is applied to today's SAFMR, which moves the conclusion with SAFMR growth.
-        You can always use the conclusion as is, always move it, or ignore it. Unit types the study did not cover use the property's median study %.</li>
       <li>5BR and larger: 4BR SAFMR + 15% per extra bedroom (HUD's convention). ZIPs split across HUD areas use the area most properties in that county use. ZIPs missing from the SAFMR file use the line's area FMR ("FMR").</li></ul>
     <h3>4. What the screen does not decide</h3>
-    <p>SAFMR is HUD's 40th-percentile rent standard, not a comparable-rent conclusion. Whether a contract's rents can actually move depends on HUD's renewal rules: the contract type (HAP vs budget-based PRAC, PAC or RAC), the renewal option, timing and an actual rent comparability study.
-      The contract type and renewal option filters are there for that.</p>
+    <p>SAFMR is HUD's 40th-percentile rent standard, not a comparable-rent conclusion, and a study a few miles away may cover a different product. Whether a contract's rents can actually move depends on HUD's renewal rules: the contract type (HAP vs budget-based PRAC, PAC or RAC), the renewal option, timing and an actual rent comparability study.</p>
     <h3>Sources</h3>
     <p>HUD Multifamily contract rents and utility allowances (${esc(M.hud.name)}, as of ${esc(M.hud.asof)}); HUD FY2019–FY2027 Small Area FMR files; rent studies in the Rent Grid Library. Built ${esc(M.built)}.
       ${P.length.toLocaleString()} California HUD properties with rent lines, ${M.lines.toLocaleString()} rent lines.</p>`;
@@ -500,8 +632,7 @@ function start(D) {
   /* ---------- go ---------- */
   syncControls();
   refresh();
-  const fit = L.latLngBounds(P.map(p => [p.lat, p.lon]));
-  map.fitBounds(fit, { padding: [10, 10] });
+  map.fitBounds(L.latLngBounds(P.map(p => [p.lat, p.lon])), { padding: [10, 10] });
   const fromHash = () => {
     const m = /sel=(\w+)/.exec(location.hash), p0 = m && pById.get(m[1]);
     if (p0 && p0.id !== S.sel) { map.setView([p0.lat, p0.lon], 13); select(p0, false); }
