@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>California Rent Screener</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="../assets/app.css">
+<link rel="stylesheet" href="ca.css">
+</head>
+<body>
+<div id="gate" class="gate">
+  <form id="gateForm" autocomplete="off">
+    <h1>California Rent Screener</h1>
+    <p class="muted">This page is password protected.</p>
+    <label class="lbl" for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+    <button class="btn on" id="gateBtn" type="submit">Unlock</button>
+    <div id="gateErr" class="err" role="alert"></div>
+  </form>
+</div>
+
+<header class="top">
+  <div class="brand">California Rent Screener</div>
+  <div class="asof" id="asof"></div>
+  <a class="link" href="../">National map</a>
+  <button class="link" id="aboutBtn">How it works</button>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <section class="block">
+      <label class="lbl" for="q">Search a property, city, ZIP, owner or HUD ID</label>
+      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="e.g. Charter Oaks · Covina · 91343 · 800002487">
+      <div class="row gap mt"><label class="lbl inline" for="county">County</label><select id="county"><option value="">All counties</option></select></div>
+    </section>
+
+    <section class="block" id="filtersBlock">
+      <div class="block-head"><span>Market estimate</span><button class="link" id="resetAll">Reset all</button></div>
+      <label class="lbl" for="ratio">Market gross rent as % of FY2027 SAFMR</label>
+      <div class="ratio-row"><input id="ratio" type="range" min="60" max="160" step="1"><span class="ratio-val" id="ratioVal"></span></div>
+      <div class="row gap tiny"><span class="muted">Set to the studies'</span><button class="link" data-q="p25">25th pct</button>·<button class="link" data-q="med">median</button>·<button class="link" data-q="p75">75th pct</button></div>
+      <div class="row gap mt"><label class="lbl inline" for="cal">Learn from</label><select id="cal"></select></div>
+      <div id="calStats" class="hint"></div>
+      <details><summary>Study ratios by year and bedroom</summary><div id="calTables"></div></details>
+      <label class="chk"><input type="checkbox" id="byBed"> Use a separate ratio for each bedroom count</label>
+      <label class="lbl mt" for="rcsMode">Where we have a rent study</label>
+      <select id="rcsMode">
+        <option value="auto">Use it; move studies over a year old with SAFMR</option>
+        <option value="asis">Use its conclusion as is</option>
+        <option value="age">Use it, always moved with SAFMR since the study</option>
+        <option value="ignore">Ignore it (use the % above)</option>
+      </select>
+      <div class="row gap mt"><label class="lbl inline" for="fee">Fee</label><input id="fee" class="w60" type="number" min="0" max="100" step="0.5"><span>% of the annual uplift</span></div>
+      <p class="hint">Estimated market rent = this % × the FY2027 SAFMR for the ZIP and bedroom count, minus the current utility allowance. Gap = that minus today's contract rent.</p>
+
+      <div class="block-head sub"><span>Filters</span></div>
+      <details open><summary>Contract type <span class="cnt" id="f-doc-n"></span></summary>
+        <div id="f-doc" class="checks"></div>
+        <label class="chk"><input type="checkbox" id="oldCons"> Include old rent-file-only contracts <span class="muted">(not in HUD's active contract list)</span></label>
+        <p class="hint">Rent studies set rents on Section 8 HAP contracts. PRAC, PAC and RAC rents are budget-based.</p>
+      </details>
+      <details><summary>Renewal option <span class="cnt" id="f-ropt-n"></span></summary>
+        <div class="row gap tiny"><button class="link" data-all="ropt">All</button><button class="link" data-none="ropt">None</button></div>
+        <div id="f-ropt" class="checks"></div></details>
+      <details open><summary>Timing, size &amp; gap</summary>
+        <div class="row gap mt"><label class="lbl inline" for="exp">Current term ends</label>
+          <select id="exp"><option value="">Any time</option><option value="12">Within 12 months</option><option value="24">Within 24 months</option><option value="36">Within 36 months</option><option value="60">Within 5 years</option></select></div>
+        <div class="row gap mt"><label class="lbl inline" for="minUnits">Assisted units at least</label><input id="minUnits" type="number" min="0" placeholder="any"></div>
+        <div class="row gap mt"><label class="lbl inline" for="minGap">Gap per unit at least $</label><input id="minGap" type="number" step="25" placeholder="any"></div>
+        <div class="row gap mt"><label class="lbl inline" for="minAnnual">Annual uplift at least $</label><input id="minAnnual" type="number" step="10000" placeholder="any"></div>
+        <label class="chk mt"><input type="checkbox" id="rcsOnly"> Only properties with a rent study</label>
+      </details>
+    </section>
+
+    <section class="block" id="exportBlock">
+      <button class="btn" id="exportBtn">Download this tab (CSV)</button>
+      <p class="hint">Exports every filtered row of the open tab, not just the rows shown.</p>
+    </section>
+  </aside>
+
+  <main class="main">
+    <div id="map" class="map"></div>
+    <div class="results">
+      <div class="results-head">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-view="props">Screener</button>
+          <button class="tab" data-view="lines">Rents by bedroom</button>
+          <button class="tab" data-view="rcs">Rent studies</button>
+          <button class="tab" data-view="safmr">SAFMR by ZIP</button>
+        </div>
+        <div id="summary" class="summary"></div>
+        <button class="btn small mobile-only" id="filtersBtn">Filters</button>
+      </div>
+      <div class="tablewrap"><table id="ctbl"><thead></thead><tbody></tbody></table><div id="empty" class="empty" hidden></div></div>
+      <div id="more" class="more"></div>
+    </div>
+  </main>
+
+  <aside id="detail" class="detail" hidden>
+    <div class="detail-scroll">
+      <button class="close" id="closeDetail" aria-label="Close">×</button>
+      <div id="detailBody"></div>
+    </div>
+  </aside>
+</div>
+
+<dialog id="about"><div id="aboutBody"></div><form method="dialog"><button class="btn">Close</button></form></dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="ca_data.enc.js"></script>
+<script src="ca.js"></script>
+</body>
+</html>
