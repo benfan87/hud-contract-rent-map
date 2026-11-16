@@ -27,14 +27,22 @@ are not market rents or rent comparability study conclusions. Verify before rely
 1. `python tools/merge_fha.py <folder> --loans-asof YYYY-MM-DD`: FHA loans (Section of the Act, endorsement, maturity, rate,
    balance, TC/TE flags) from HUD's active insured-mortgage file, linked through the active-portfolio FHA tab; ownership dates.
 2. `python tools/fetch_lihtc_hud.py hud_lihtc.json`: HUD LIHTC database (HUD eGIS layer, all records).
-3. `python tools/parse_az_lihtc.py LIHTCandBond-Projects.xlsx az_lihtc.json --published YYYY-MM`: Arizona ADOH award list
-   (download it in a normal browser; the site has a bot check). Add other states the same way.
-4. `python tools/match_lihtc.py hud_lihtc.json az_lihtc.json matches.json`, then `python tools/merge_lihtc.py matches.json`.
+3. State housing-agency award / property lists (the newer allocations HUD's database lacks):
+   - `python tools/parse_az_lihtc.py LIHTCandBond-Projects.xlsx az_lihtc.json --published YYYY-MM`: Arizona ADOH award list
+     (download it in a normal browser; the site has a bot check).
+   - Spreadsheet and map-layer sources: download each `url` in `tools/state_lihtc_sources.json` into
+     `hud_src/lihtc/states/<file>`. PDF and irregular sources: `python tools/state_pdf/<st>.py --out ../hud_src/lihtc/states/extracted`
+     (see `tools/state_pdf/README.md`).
+   - `python tools/parse_state_lihtc.py tools/state_lihtc_sources.json --src-dir ../hud_src/lihtc/states --out-dir ../hud_src/lihtc/states`
+     writes `<st>_lihtc.json` per state.
+   - `python tools/geocode_lihtc.py ../hud_src/lihtc/az/az_lihtc.json ../hud_src/lihtc/states/*_lihtc.json`: Census Bureau
+     batch geocoder for rows with a street address but no coordinates (cached; reruns only send new addresses).
+4. `python tools/match_lihtc.py hud_lihtc.json az_lihtc.json states/*_lihtc.json matches.json`, then `python tools/merge_lihtc.py matches.json`.
 5. `python tools/build_qct_dda.py 2027` (writes `assets/qct_dda_2027.js` and a property flag file), then
    `python tools/merge_zones.py property_qct_dda_2027.json --year 2027`.
 6. `python tools/merge_owners.py <folder>`: owner entity, management agent and their HUD contacts from the MF Assistance &
    Section 8 property file, plus owner groups (likely sponsor: shared organization email domain, else mailing address).
-7. `python tools/build_lihtc_all.py hud_lihtc.json az_lihtc.json matches.json`: the full version's data file
+7. `python tools/build_lihtc_all.py hud_lihtc.json az_lihtc.json states/*_lihtc.json matches.json`: the full version's data file
    (`assets/lihtc_all.js`). Every LIHTC record not matched to a HUD property (high/medium tier), grouped into projects by
    address and name, tagged with the 2027 QCT/DDA. Open the site with `?all` (or `all.html`) to load it.
 

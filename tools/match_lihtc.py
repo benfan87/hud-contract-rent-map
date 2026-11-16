@@ -3,6 +3,7 @@
 HUD's LIHTC data has no HUD multifamily property ID, so records are matched on address, location and name:
   high    same street number + street name + ZIP (names not unrelated), or within 100 m with a similar name
   medium  same address under a different name, within 250 m with a similar name, or same name in the same ZIP
+          (state lists with no ZIP: near-identical name or same street address in the same city)
   low     within 100 m on the same street, names differ (shown as "possible", needs checking)
 Usage: python tools/match_lihtc.py <source.json> [<source.json> ...] <out_matches.json>
   Sources: tools/fetch_lihtc_hud.py output, tools/parse_az_lihtc.py output (same row shape).
@@ -52,6 +53,78 @@ def year(v):
     return int(v) if v and v.isdigit() and 1985 <= int(v) <= 2035 else None
 
 
+def group_records(rows):
+    """Union-find over LIHTC records: one root index per project. Rules: same street number + street + ZIP, the same
+    name in the same ZIP, within 150 m with a similar name, the same street number + street in the same city (any ZIP),
+    or (no ZIP) a near-identical name in the same city."""
+    par = list(range(len(rows)))
+
+    def find(i):
+        while par[i] != i:
+            par[i] = par[par[i]]
+            i = par[i]
+        return i
+
+    def union(i, j):
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            par[max(ri, rj)] = min(ri, rj)
+
+    info = []
+    for r in rows:
+        zip5 = (r.get("STD_ZIP5") or r.get("PROJ_ZIP") or "")[:5]
+        num, street = addr_key(r.get("STD_ADDR") or r.get("PROJ_ADD"))
+        info.append((zip5, num, street, name_key(r.get("PROJECT"))))
+    by_addr, by_name, grid = collections.defaultdict(list), collections.defaultdict(list), collections.defaultdict(list)
+    for i, (z, num, street, nk) in enumerate(info):
+        if num and z:
+            by_addr[(z, num)].append(i)
+        if nk and z:
+            by_name[(z, frozenset(nk))].append(i)
+        r = rows[i]
+        if r.get("LAT") and r.get("LON"):
+            grid[(int(r["LAT"] * 100), int(r["LON"] * 100))].append(i)
+    for ids in by_addr.values():
+        for x in ids[1:]:
+            for y in ids[:ids.index(x)]:
+                if sim(info[x][2], info[y][2]) >= 0.5:
+                    union(x, y)
+    for ids in by_name.values():
+        for x in ids[1:]:
+            union(ids[0], x)
+    # same city: same street number on the same street; a record with no ZIP also joins a near-identical name
+    by_city = collections.defaultdict(list)
+    for i, r in enumerate(rows):
+        c = re.sub(r"[^A-Z ]", "", (r.get("STD_CITY") or r.get("PROJ_CTY") or "").upper()).strip()
+        if c:
+            by_city[(r.get("PROJ_ST"), c)].append(i)
+    for ids in by_city.values():
+        # same street number + street in the same city, whatever the ZIP (ZIPs get renumbered; lists mistype them)
+        by_num = collections.defaultdict(list)
+        for i in ids:
+            if info[i][1]:
+                by_num[info[i][1]].append(i)
+        for nids in by_num.values():
+            for k, x in enumerate(nids):
+                for y in nids[:k]:
+                    if sim(info[x][2], info[y][2]) >= 0.5:
+                        union(x, y)
+        nz = [i for i in ids if not info[i][0]]
+        for x in nz:
+            for y in ids:
+                if x != y and sim(info[x][3], info[y][3]) >= 0.85:
+                    union(x, y)
+    for (gy, gx), ids in grid.items():
+        near = [j for dy in (-1, 0, 1) for dx in (-1, 0, 1) for j in grid.get((gy + dy, gx + dx), ())]
+        for i in ids:
+            ri = rows[i]
+            for j in near:
+                if j < i and sim(info[i][3], info[j][3]) >= 0.5 and \
+                        dist_m(ri["LAT"], ri["LON"], rows[j]["LAT"], rows[j]["LON"]) <= 150:
+                    union(i, j)
+    return [find(i) for i in range(len(rows))]
+
+
 def main():
     srcs, out = sys.argv[1:-1], sys.argv[-1]
     HUD_PAGE = "https://hudgis-hud.opendata.arcgis.com/maps/HUD::low-income-housing-tax-credit-properties-1/about"
@@ -83,6 +156,10 @@ def main():
         if x["name"]:
             by_name[(x["st"], x["city"])].append(i)
 
+    root = group_records(rows_in)
+    members = collections.defaultdict(list)
+    for i, g in enumerate(root):
+        members[g].append(i)
     matches, tiers = {}, collections.Counter()
     for p in P:
         pid, pname, paddr, pcity, pst, pzip, lat, lon, loc = p[0], p[1], p[2], (p[3] or "").upper().strip(), p[4], p[5], p[8], p[9], p[10]
@@ -103,21 +180,28 @@ def main():
         for i in by_name.get((pst, pcity), ()):
             if sim(pn, recs[i]["name"]) >= 0.6:
                 cand.setdefault(i, None)
-        out_rows = []
+        # a record grouped with a matched record (same project: e.g. the state's award and HUD's PIS record) matches too
+        for i in list(cand):
+            for j in members[root[i]]:
+                cand.setdefault(j, ("group", i))
+        out_rows, row_of = [], {}
         for i, dm in cand.items():
+            if isinstance(dm, tuple):
+                continue
             x = recs[i]
             ns = sim(pn, x["name"])
             same_addr = pnum and x["num"] == pnum and x["zip"] == pzip and sim(pstreet, x["street"]) >= 0.5
             same_street = sim(pstreet, x["street"]) >= 0.5
             if (same_addr and ns >= 0.2) or (dm is not None and dm <= 100 and ns >= 0.5):
                 tier = "high"
-            elif same_addr or (dm is not None and dm <= 250 and ns >= 0.5) or (ns >= 0.75 and x["zip"] == pzip):
+            elif same_addr or (dm is not None and dm <= 250 and ns >= 0.5) or (ns >= 0.75 and x["zip"] == pzip)                     or (not x["zip"] and x["city"] == pcity and (ns >= 0.85 or (pnum and x["num"] == pnum and same_street))):
                 tier = "medium"  # same address under another name (renamed?), or same name nearby / same ZIP
             elif dm is not None and dm <= 100 and same_street:
                 tier = "low"  # neighbor on the same street, names differ: possible only
             else:
                 continue
             r = x["r"]
+            row_of[i] = len(out_rows)
             why = [w for w, ok in (("same address", same_addr), (f"{round(dm)} m away" if dm is not None else "", dm is not None),
                                    (f"name match {ns:.0%}", ns >= 0.5), ("name differs", ns < 0.2)) if ok]
             out_rows.append({"hud_id": r["HUD_ID"], "project": r["PROJECT"], "addr": r["PROJ_ADD"], "city": r["PROJ_CTY"],
@@ -128,6 +212,24 @@ def main():
                              "allocamt": r["ALLOCAMT"], "nonprog": r.get("NONPROG"), "company": r["COMPANY"],
                              "source": r["_src"], "url": r["_url"],
                              "tier": tier, "why": ", ".join(why)})
+        rank = {"high": 0, "medium": 1, "low": 2}
+        for j, k in list(row_of.items()):  # a "possible" record whose project-mate matched better takes the mate's tier
+            if out_rows[k]["tier"] == "low":
+                mates = [out_rows[row_of[m]] for m in members[root[j]] if m != j and m in row_of and out_rows[row_of[m]]["tier"] != "low"]
+                if mates:
+                    b = min(mates, key=lambda x: rank[x["tier"]])
+                    out_rows[k].update(tier=b["tier"], why=f"same project as {b['project']} ({b['why']}); {out_rows[k]['why']}")
+        for j, via in [(j, d[1]) for j, d in cand.items() if isinstance(d, tuple)]:
+            if j in row_of or via not in row_of or out_rows[row_of[via]]["tier"] == "low":
+                continue
+            r, base = recs[j]["r"], out_rows[row_of[via]]
+            row_of[j] = len(out_rows)
+            out_rows.append(dict(base, hud_id=r["HUD_ID"], project=r["PROJECT"], addr=r["PROJ_ADD"], city=r["PROJ_CTY"],
+                                 st=r["PROJ_ST"], zip=r["PROJ_ZIP"], state_id=r["STATE_ID"], yr_alloc=year(r["YR_ALLOC"]),
+                                 yr_pis=year(r["YR_PIS"]), type=r["TYPE"], credit=r["CREDIT"], bond=r["BOND"], fha=r.get("FHA"),
+                                 mff_ra=r.get("MFF_RA"), units=r["N_UNITS"], li_units=r["LI_UNITS"], allocamt=r["ALLOCAMT"],
+                                 nonprog=r.get("NONPROG"), company=r["COMPANY"], source=r["_src"], url=r["_url"],
+                                 why=f"same project as {base['project']} ({base['why']})"))
         if out_rows:
             out_rows.sort(key=lambda m: ({"high": 0, "medium": 1, "low": 2}[m["tier"]], -(m["yr_pis"] or 0)))
             matches[pid] = out_rows

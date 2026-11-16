@@ -10,7 +10,7 @@ const LFLAG = X ? X.meta.flag_bits : {};
 if (X) {
   D.locnote = D.locnote || []; D.lsrc = D.lsrc || []; D.lsrcUrl = D.lsrcUrl || [];
   const ln = t => { const i = D.locnote.indexOf(t); return i >= 0 ? i : D.locnote.push(t) - 1; };
-  const LN = { L: ln('HUD LIHTC database geocode'), C: ln('LIHTC record has no coordinates; placed at Census ZIP (ZCTA) centroid'), N: ln('LIHTC record has no coordinates or ZIP') };
+  const LN = { L: ln('HUD LIHTC database geocode'), G: ln('State award-list location: the agency coordinates, or its address geocoded by the Census Bureau'), C: ln('LIHTC record has no coordinates; placed at Census ZIP (ZCTA) centroid'), N: ln('LIHTC record has no coordinates or ZIP') };
   const srcMap = X.lsrc.map(([t, u]) => { let i = D.lsrc.indexOf(t); if (i < 0) { i = D.lsrc.push(t) - 1; D.lsrcUrl.push(u); } return i; });
   const li0 = (H.LI = H.LI || []).length;
   H.PL = H.PL || []; H.Z = H.Z || [];
@@ -44,7 +44,7 @@ const props = H.P.map((p, i) => ({
   propcat: dict('propcat', p[14]), owner: p[15], mgmt: p[16], office: dict('office', p[17]), fha: dict('fha', p[18]),
   cons: [], dist: null,
 }));
-for (const p of props) p.lc = !p.loc ? 'N' : p.loc === 'C' ? 'C' : (p.loc === 'R' || p.loc === '4' || p.loc === 'L') ? 'P' : 'A';
+for (const p of props) p.lc = !p.loc ? 'N' : p.loc === 'C' ? 'C' : (p.loc === 'R' || p.loc === '4' || p.loc === 'L' || p.loc === 'G') ? 'P' : 'A';
 // Financing, LIHTC and 2027 QCT/DDA (tools/merge_fha.py, tools/merge_lihtc.py, tools/build_qct_dda.py)
 for (const p of props) { p.loans = []; p.ownSince = H.P[p.i][19] || null; p.ownYear = p.ownSince ? +p.ownSince.slice(0, 4) : null; p.lih = null; p.qct = null; p.dda = null; }
 for (const f of (H.F || [])) props[f[0]].loans.push({ fha: f[1], soa: f[2], soaCode: f[3], primary: f[4], insured: f[5], initEnd: f[6], finalEnd: f[7],
@@ -477,7 +477,7 @@ const PROP_COLS = [
   { k: 'owner', h: 'Owner', t: 'Owner entity in HUD\'s property file (usually a single-asset LLC or LP); for LIHTC-only projects, the contact company in HUD\'s LIHTC database', v: r => r.p.ow?.name || r.p.owner || (r.p.lihOnly ? lihCompany(r.p) : ''), f: (v, r) => v && r.p.lihOnly ? `${esc(v)} <span class="muted">(LIHTC contact)</span>` : esc(v) },
   { k: 'own', h: 'Owned since', t: "HUD's ownership effective date: when the current owner entity took over", v: r => r.p.ownSince || '' },
   { k: 'spon', h: 'Owner group', t: 'Likely sponsor: owner entities sharing an email domain or mailing address', v: r => sponLabel(r.p.spon) },
-  { k: 'loc', h: 'Location', t: 'How precisely HUD locates the property on the map', v: r => r.p.lc, f: (v, r) => v === 'P' ? (r.p.loc === 'L' ? 'LIHTC geocode' : 'Precise') : v === 'A' ? '<span class="b out">Approx. (HUD)</span>' : v === 'C' ? '<span class="b out">ZIP centroid</span>' : '<span class="flag">None</span>' },
+  { k: 'loc', h: 'Location', t: 'How precisely HUD locates the property on the map', v: r => r.p.lc, f: (v, r) => v === 'P' ? (r.p.loc === 'L' ? 'LIHTC geocode' : r.p.loc === 'G' ? 'Address geocode' : 'Precise') : v === 'A' ? '<span class="b out">Approx. (HUD)</span>' : v === 'C' ? '<span class="b out">ZIP centroid</span>' : '<span class="flag">None</span>' },
 ];
 if (FULL) {
   PROP_COLS.splice(2, 0, { k: 'rtype', h: 'Record', t: 'HUD = in HUD\'s Section 8 / multifamily files; LIHTC only = in HUD\'s LIHTC database or a state award list but not in HUD\'s files', v: r => recType(r.p), f: v => v === 'LIHTC only' ? `<span class="b T">${v}</span>` : esc(v) });
@@ -646,7 +646,7 @@ function renderDetail(p) {
     : `${esc(LOC_CLASS[p.lc])}${p.lc !== 'P' ? ` <span class="muted">(${esc(p.locNote)})</span>` : ''}`;
   let h = `<h2>${esc(pname(p))}</h2>
     <div class="muted">${esc([p.addr, p.city, [p.st, p.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') || (p.lihOnly ? 'No address in the LIHTC record' : 'Address not in HUD property files'))} · ${p.lihOnly ? 'LIHTC project ID' : 'HUD property ID'} ${esc(p.id)}</div>`;
-  if (p.lihOnly) return renderLihOnly(p, h, p.lc === 'P' ? 'HUD LIHTC database geocode' : p.lc === 'C' ? 'ZIP centroid (approximate): the LIHTC record has no coordinates' : `<span class="flag">No location: ${esc(p.locNote)}</span>`);
+  if (p.lihOnly) return renderLihOnly(p, h, p.loc === 'G' ? 'State award-list location (agency coordinates, or address via the Census geocoder)' : p.lc === 'P' ? 'HUD LIHTC database geocode' : p.lc === 'C' ? 'ZIP centroid (approximate): the LIHTC record has no coordinates' : `<span class="flag">No location: ${esc(p.locNote)}</span>`);
   h += kv([
     state.center && p.dist != null && ['Distance from center', `${p.dist.toFixed(2)} mi`],
     ['Location', loc],
@@ -1086,6 +1086,8 @@ function syncRadiusUI() {
 }
 
 /* ---------- about ---------- */
+// states whose housing agency's own award / property list is loaded (any LIHTC record not from HUD's database)
+const LSTATES = [...new Set((H.LI || []).filter(r => !String(D.lsrc[r[14]] || '').startsWith('HUD')).map(r => r[3]).filter(Boolean))].sort();
 function renderAbout() {
   const m = H.meta, s = m.stats;
   $('#asof').textContent = `HUD files published ${m.hud_published} (downloaded ${m.downloaded})${m.rent_file ? ` · rents & UAs as of ${m.rent_file.asof}` : ''} · ${m.properties.toLocaleString()} property IDs · ${m.contracts.toLocaleString()} contracts${FULL ? ` · + ${X.meta.projects.toLocaleString()} LIHTC-only projects` : ''}`;
@@ -1100,8 +1102,8 @@ function renderAbout() {
   <li><b>FHA loans</b>: HUD <a href="${esc(m.fha.loan_page)}" target="_blank" rel="noopener">active MF insured mortgages</a> (as of ${esc(m.fha.loans_asof)}), linked to HUD property IDs by the "All active Properties with FHA" tab of HUD's <a href="${esc(m.fha.portfolio_page)}" target="_blank" rel="noopener">Active Multifamily Portfolio</a> file. Loan type = HUD Section of the Act (e.g. 223(f), 221(d)(4), 223(a)(7)). TC / TE = HUD's codes for loans that include LIHTC / tax-exempt bonds.</li>
   <li><b>Ownership effective date</b>: HUD's MF Assistance &amp; Section 8 property file. A recent date often marks a sale or resyndication.</li></ul>` : ''}
   ${m.lihtc ? `<h3>LIHTC</h3><ul>
-  <li>Sources: ${D.lsrc.map((t, i) => `<a href="${esc(D.lsrcUrl[i])}" target="_blank" rel="noopener">${esc(t)}</a>`).join('; ')}. Each record in a property's panel names its source.</li>
-  <li>HUD's LIHTC data covers projects placed in service through about 2020-2022 and has no HUD property ID. State award lists (so far Arizona, 1987 to present) add recent allocations but no PIS dates.</li>
+  <li>Sources: HUD's LIHTC database plus award lists and property inventories from ${LSTATES.length} state housing agencies. Each record in a property's panel names and links its source. <details><summary>Show every source file (${[...new Set(D.lsrcUrl)].length.toLocaleString()})</summary>${[...new Map(D.lsrc.map((t, i) => [D.lsrcUrl[i], t])).entries()].map(([u, t]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)}</a>`).join('; ')}</details></li>
+  <li>HUD's LIHTC data covers projects placed in service through about 2020-2022 and has no HUD property ID. State housing-agency award lists (${LSTATES.length ? LSTATES.join(', ') : 'none'}) add recent allocations, usually without PIS dates.</li>
   <li>Matching: <b>High</b> = same address, or within 100 m with a similar name. <b>Medium</b> = same address under another name, similar name within 250 m, or same name in the same ZIP. <b>Possible</b> = a neighbor on the same street; not used unless you tick "Count possible matches". ${m.lihtc.properties.toLocaleString()} properties have at least one match.</li>
   <li><b>Year 15</b> = latest PIS + 14. If the latest allocation is newer than the latest PIS, allocation + 16 (marked est.). <b>Resyndication</b> = a later allocation at least 5 years after the earlier allocation/PIS years (HUD and state lists often record the same deal a year apart).</li></ul>` : ''}
   ${H.meta.owners ? `<h3>Owners</h3><ul>
@@ -1109,12 +1111,12 @@ function renderAbout() {
   <li><b>Owner group (likely sponsor)</b>: owner entities that share an organization's email domain (free and ISP mail such as gmail.com is ignored), or, without one, the same mailing address. ${H.meta.owners.sponsor_groups.toLocaleString()} groups cover ${H.meta.owners.properties_in_groups.toLocaleString()} properties. It's a lead, not proof of control: confirm with state entity filings and recorded deeds. Search a sponsor name or email domain (e.g. "mercyhousing") to see its portfolio.</li></ul>` : ''}
   ${H.meta.zones ? `<h3>2027 QCT / DDA</h3><ul><li>${esc(H.meta.zones.note)}</li></ul>` : ''}
   ${FULL ? `<h3>Full version: all LIHTC projects</h3><ul>
-  <li>This version adds every LIHTC project in HUD's LIHTC database and the state award lists (${X.meta.sources.map(s => `${esc(s.file)}, ${esc(s.fetched)}`).join('; ')}) that isn't already attached to a HUD property: ${X.meta.records_added.toLocaleString()} records grouped into ${X.meta.projects.toLocaleString()} projects. ${X.meta.records_on_hud_properties.toLocaleString()} of ${X.meta.records_total.toLocaleString()} records are already shown on HUD properties (high/medium matches). Built ${esc(X.meta.built)}.</li>
+  <li>This version adds every LIHTC project in HUD's LIHTC database and the state award lists (HUD's database fetched ${esc(X.meta.sources[0].fetched)}; ${X.meta.sources.length - 1} state files fetched ${esc([...new Set(X.meta.sources.slice(1).map(s => s.fetched))].sort().join(' to ').replace(/ to .* to /, ' to '))}) that isn't already attached to a HUD property: ${X.meta.records_added.toLocaleString()} records grouped into ${X.meta.projects.toLocaleString()} projects. ${X.meta.records_on_hud_properties.toLocaleString()} of ${X.meta.records_total.toLocaleString()} records are already shown on HUD properties (high/medium matches). Built ${esc(X.meta.built)}.</li>
   <li>Records at the same street address (or with the same name in the same ZIP, or within 60 m under a similar name) are grouped as one project, so resyndications and renamed rounds show together.</li>
-  <li>Locations: ${X.meta.located_lihtc.toLocaleString()} use the LIHTC record's own geocode, ${X.meta.located_zip.toLocaleString()} are placed at the ZIP centroid (approximate), and ${X.meta.no_location.toLocaleString()} have no coordinates or ZIP; those stay searchable by name or ID.</li>
+  <li>Locations: ${X.meta.located_lihtc.toLocaleString()} use the LIHTC record's own geocode, ${(X.meta.located_census || 0).toLocaleString()} are placed from state award lists (the agency's coordinates or the Census Bureau geocoder), ${X.meta.located_zip.toLocaleString()} are placed at the ZIP centroid (approximate), and ${X.meta.no_location.toLocaleString()} have no coordinates or ZIP; those stay searchable by name or ID.</li>
   <li>${X.meta.possible_hud_duplicates.toLocaleString()} LIHTC-only projects sit next to a HUD property on the same street with a different name ("possible" match). Their panel links the HUD property so you can check whether they're the same.</li>
   <li>LIHTC-only projects have no HUD contracts, rents or owner records. Contract, rent and bedroom filters apply to HUD contracts only, so LIHTC-only projects are left out while any of those is set (the summary line says how many). Use the "Record type" filter to see one group at a time.</li>
-  <li>HUD's LIHTC database covers projects placed in service through about 2022 (layer last updated ${esc(X.meta.layer_updated || '2025-05-14')}). Later allocations come only from state award lists; so far Arizona.</li></ul>` : ''}
+  <li>HUD's LIHTC database covers projects placed in service through about 2022 (layer last updated ${esc(X.meta.layer_updated || '2025-05-14')}). Later allocations come from state housing-agency lists (${LSTATES.join(', ')}); states without a public list have only HUD's data.</li></ul>` : ''}
   <h3>Old contracts</h3><ul>
   <li>${cons.filter(c => c.old).length.toLocaleString()} contract numbers appear only in HUD's rent/UA file, not in HUD's active Section 8 contract list, so they have no type, program, status or dates. Most are predecessor contracts replaced by a renewal or a combined contract (e.g., an original "L" LMSA contract renewed under an "M" number). They're hidden by default; tick "Include old rent-file-only contracts" under Contract type to show them, labeled "${OLD_STATUS}". Their rents may be years old.</li></ul>
   <h3>Dates</h3><ul>

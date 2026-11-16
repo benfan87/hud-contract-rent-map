@@ -7,9 +7,11 @@ Inputs (same files as the LIHTC match step):
   <matches.json>     tools/match_lihtc.py output; records it links to a HUD property at high/medium confidence
                      are already on the site and are left out here
 Rules:
-  - Records left over are grouped into projects: same street number + street + ZIP, the same name in the same
-    ZIP, or within 60 m with a similar name. Resyndications and renamed rounds at one address become one project.
-  - Location: the LIHTC record's own coordinates (HUD's geocode); otherwise the Census ZIP (ZCTA) centroid,
+  - Records are grouped into projects (tools/match_lihtc.py group_records): same street number + street (same ZIP or
+    same city), the same name in the same ZIP, within 150 m with a similar name, or (no ZIP) a near-identical name
+    in the same city. A project with any record on a HUD property is shown on that property instead. Resyndications and renamed rounds at one address become one project.
+  - Location: the LIHTC record's own coordinates (HUD's geocode); else a state-list address geocoded by the Census
+    geocoder (tools/geocode_lihtc.py); otherwise the Census ZIP (ZCTA) centroid,
     flagged approximate; otherwise none.
   - Year 15 / resyndication: the same rules as tools/merge_lihtc.py.
   - 2027 QCT/DDA: the same point-in-polygon test as tools/build_qct_dda.py.
@@ -27,7 +29,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-from match_lihtc import addr_key, dist_m, name_key, sim, year  # noqa: E402
+from match_lihtc import group_records, year  # noqa: E402
 from merge_lihtc import HUD_CREDIT, HUD_TYPE  # noqa: E402
 
 HUD_PAGE = "https://hudgis-hud.opendata.arcgis.com/maps/HUD::low-income-housing-tax-credit-properties-1/about"
@@ -90,53 +92,11 @@ def main():
     left = [r for r in rows if key(r) not in linked]
     print(f"{len(rows)} LIHTC records; {len(rows) - len(left)} already on HUD properties; {len(left)} to add")
 
-    # ---- group records into projects (union-find) ----
-    par = list(range(len(left)))
-
-    def find(i):
-        while par[i] != i:
-            par[i] = par[par[i]]
-            i = par[i]
-        return i
-
-    def union(i, j):
-        ri, rj = find(i), find(j)
-        if ri != rj:
-            par[max(ri, rj)] = min(ri, rj)
-
-    info = []
-    for r in left:
-        zip5 = (r.get("STD_ZIP5") or r.get("PROJ_ZIP") or "")[:5]
-        num, street = addr_key(r.get("STD_ADDR") or r.get("PROJ_ADD"))
-        info.append((zip5, num, street, name_key(r.get("PROJECT"))))
-    by_addr, by_name, grid = collections.defaultdict(list), collections.defaultdict(list), collections.defaultdict(list)
-    for i, (z, num, street, nk) in enumerate(info):
-        if num and z:
-            by_addr[(z, num)].append(i)
-        if nk and z:
-            by_name[(z, frozenset(nk))].append(i)
-        r = left[i]
-        if r.get("LAT") and r.get("LON"):
-            grid[(int(r["LAT"] * 200), int(r["LON"] * 200))].append(i)
-    for ids in by_addr.values():
-        for x in ids[1:]:
-            for y in ids[:ids.index(x)]:
-                if sim(info[x][2], info[y][2]) >= 0.5:
-                    union(x, y)
-    for ids in by_name.values():
-        for x in ids[1:]:
-            union(ids[0], x)
-    for (gy, gx), ids in grid.items():
-        near = [j for dy in (-1, 0, 1) for dx in (-1, 0, 1) for j in grid.get((gy + dy, gx + dx), ())]
-        for i in ids:
-            ri = left[i]
-            for j in near:
-                if j < i and sim(info[i][3], info[j][3]) >= 0.5 and \
-                        dist_m(ri["LAT"], ri["LON"], left[j]["LAT"], left[j]["LON"]) <= 60:
-                    union(i, j)
+    # ---- group records into projects (shared with tools/match_lihtc.py) ----
+    root = group_records(left)
     groups = collections.defaultdict(list)
     for i in range(len(left)):
-        groups[find(i)].append(i)
+        groups[root[i]].append(i)
     print(f"{len(groups)} projects")
 
     # ---- ZIP (ZCTA) centroids and 2027 QCT/DDA ----
@@ -167,10 +127,14 @@ def main():
         while pid in ids_seen:
             pid += "+"
         ids_seen.add(pid)
-        pts = [(r["LAT"], r["LON"]) for r in recs if r.get("LAT") and r.get("LON")]
+        # HUD's own geocode first; Census-geocoded state-list addresses (tools/geocode_lihtc.py) only when none
+        pts = [(r["LAT"], r["LON"]) for r in recs if r.get("LAT") and r.get("LON") and not r.get("GEO")]
+        gloc = "L"
+        if not pts:
+            pts, gloc = [(r["LAT"], r["LON"]) for r in recs if r.get("LAT") and r.get("LON")], "G"
         zip5 = next(((r.get("STD_ZIP5") or r.get("PROJ_ZIP") or "")[:5] for r in reversed(recs) if (r.get("STD_ZIP5") or r.get("PROJ_ZIP"))), "")
         if pts:
-            lat, lon, loc = round(sum(p[0] for p in pts) / len(pts), 6), round(sum(p[1] for p in pts) / len(pts), 6), "L"
+            lat, lon, loc = round(sum(p[0] for p in pts) / len(pts), 6), round(sum(p[1] for p in pts) / len(pts), 6), gloc
         elif zip5 in zcent:
             (lat, lon), loc = zcent[zip5], "C"
         else:
@@ -247,9 +211,9 @@ def main():
     meta = {"built": dt.date.today().isoformat(), "zones_year": int(a.year),
             "sources": [{k: v for k, v in s.items() if k != "label"} for s in sources],
             "records_total": len(rows), "records_on_hud_properties": len(rows) - len(left), "records_added": len(left),
-            "projects": len(P), "located_lihtc": n_loc["L"], "located_zip": n_loc["C"], "no_location": n_loc[None],
+            "projects": len(P), "located_lihtc": n_loc["L"], "located_census": n_loc["G"], "located_zip": n_loc["C"], "no_location": n_loc[None],
             "possible_hud_duplicates": sum(1 for e in E if e[1]), "flag_bits": FLAG_BITS,
-            "format": {"P": "id, name, addr, city, st, zip, lat, lon, loc (L = LIHTC geocode, C = ZIP centroid, null = none), "
+            "format": {"P": "id, name, addr, city, st, zip, lat, lon, loc (L = LIHTC geocode, G = Census address geocode, C = ZIP centroid, null = none), "
                             "units, nRecords, lastAlloc, lastPis, y15, y15est, resynd, firstYear; records are LI rows in order",
                        "LI": LI_COLS[:5] + ["id", "hudId (null = same as id)", "alloc", "pis", "credit (index into cr)",
                                             "bond", "type (index into ty)", "units", "liUnits", "src (index into lsrc)",

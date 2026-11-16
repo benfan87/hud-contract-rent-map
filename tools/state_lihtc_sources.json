@@ -1,0 +1,939 @@
+{
+ "note": "State LIHTC award / property lists parsed by tools/parse_state_lihtc.py. Download each url into hud_src/lihtc/states/<file>.",
+ "sources": [
+  {
+   "st": "CA",
+   "file": "ca_ctcac_list_of_projects.xlsx",
+   "sheets": [
+    "California Mapped Projects"
+   ],
+   "label": "California Tax Credit Allocation Committee list of projects (through 2026-09)",
+   "page": "https://www.treasurer.ca.gov/ctcac/projects.asp",
+   "url": "https://www.treasurer.ca.gov/sites/default/files/ctcac/List%20of%20Projects_1.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name",
+    "STATE_ID": "^Application Number",
+    "YR_ALLOC": "^Application Number",
+    "CREDIT": "^Type of Tax Credit",
+    "TYPE": "^Construction Type",
+    "COMPANY": "^Developer",
+    "PROJ_ADD": "^Project Address",
+    "PROJ_CTY": "^Project City",
+    "PROJ_ZIP": "^Project Zip",
+    "YR_PIS": "^Placed in Service",
+    "N_UNITS": "^Total Units",
+    "LI_UNITS": "^Low Income Units"
+   }
+  },
+  {
+   "st": "TX",
+   "file": "tx_htc_property_inventory.xlsx",
+   "sheets": [
+    "PropInventory"
+   ],
+   "label": "Texas Dept. of Housing & Community Affairs HTC property inventory",
+   "page": "https://www.tdhca.texas.gov/housing-tax-credit-program-inventory",
+   "url": "https://www.tdhca.texas.gov/sites/default/files/multifamily/docs/HTCPropertyInventory_0.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Development Name",
+    "STATE_ID": "^TDHCA#",
+    "YR_ALLOC": "^Year$",
+    "CREDIT": "^Program Type",
+    "TYPE": "^Construction Type",
+    "PROJ_ADD": "^Project Address",
+    "PROJ_CTY": "^Project City",
+    "PROJ_ZIP": "^Zip Code",
+    "ALLOCAMT": "^LIHTC Amt Awarded",
+    "N_UNITS": "^Total Units",
+    "LI_UNITS": "^LIHTC Units",
+    "LAT": "^Latitude",
+    "LON": "^Longitude"
+   }
+  },
+  {
+   "st": "MN",
+   "file": "mn_htc_funding_selections.xlsx",
+   "sheets": [
+    "Sheet1"
+   ],
+   "label": "Minnesota Housing comprehensive list of HTC funding selections",
+   "page": "https://www.mnhousing.gov/rental-housing/housing-development-and-capital-programs/housing-tax-credits.html",
+   "url": "https://www.mnhousing.gov/documents/50266/taxcreditawardshistoryx/view",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Property Name",
+    "STATE_ID": "^HTC #",
+    "YR_ALLOC": "^Allocation Year",
+    "PROJ_ADD": "^Property Address",
+    "PROJ_CTY": "^Property City",
+    "PROJ_ZIP": "^Property Zip",
+    "COMPANY": "^Developer",
+    "ALLOCAMT": "^Latest Tax",
+    "N_UNITS": "^Total",
+    "LI_UNITS": "^HTC Units",
+    "CREDIT": "^MHFA Funding",
+    "TYPE": "^Activity Type"
+   },
+   "credit_map": [
+    [
+     "LIHC-TE|Tax Exe",
+     "4% (bond)"
+    ],
+    [
+     "HTC",
+     "9%"
+    ]
+   ],
+   "year_fallback": "^Application Date"
+  },
+  {
+   "st": "MT",
+   "file": "mt_housing_credit_properties.xlsm",
+   "sheets": [
+    "HC All"
+   ],
+   "label": "Montana Board of Housing existing housing credit properties list",
+   "page": "https://housing.mt.gov/Multifamily-Development/Housing-Credits",
+   "url": "https://commerce.mt.gov/_shared/housing/Multifamily/docs/websiteproplst.xlsm",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name",
+    "YR_ALLOC": "^Credit Year",
+    "PROJ_ADD": "^Project Address",
+    "PROJ_CTY": "^City$",
+    "PROJ_ZIP": "^\\s*ZIP$",
+    "LAT": "^Lat$",
+    "LON": "^Long$",
+    "CREDIT": "^Credit Type",
+    "TYPE": "^Type of Construction",
+    "N_UNITS": "^No\\. of Units",
+    "COMPANY": "^Owner 1",
+    "YR_PIS": "^Placed in Service"
+   },
+   "drop": {
+    "^Status": "No Award|Returned"
+   }
+  },
+  {
+   "st": "OR",
+   "file": "or_ohcs_funded.json",
+   "label": "Oregon Housing & Community Services funded properties (dashboard data, June 2026 update)",
+   "page": "https://www.oregon.gov/ohcs/development/pages/index.aspx",
+   "url": "https://services.arcgis.com/uUvqNMGPm7axC2dD/arcgis/rest/services/OHCS_Funded_Properties_June_2026_Update_WFL1/FeatureServer/3",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project_Name$",
+    "STATE_ID": "^TC_ID$",
+    "YR_ALLOC": "^HSC_Approved_Date$",
+    "PROJ_ADD": "^Project_Address$",
+    "PROJ_CTY": "^Proj_City$",
+    "PROJ_ZIP": "^Proj_Zip$",
+    "CREDIT": "^Deal_Financial_Purpose$",
+    "TYPE": "^Construction_Building_Type$",
+    "N_UNITS": "^TOTAL_UNITS$",
+    "COMPANY": "^Applicant_Owner_Name$"
+   },
+   "require_any": [
+    "^LIHTC9__$",
+    "^LIHTC4__$"
+   ],
+   "credit_map": [
+    [
+     "9% LIHTC",
+     "9%"
+    ],
+    [
+     "4% LIHTC",
+     "4% (bond)"
+    ]
+   ]
+  },
+  {
+   "st": "IL",
+   "file": "il_IHDA_9PCT_5YR_20261013.xlsx",
+   "sheets": "*",
+   "label": "Illinois Housing Development Authority 9% allocations, last 5 years (updated 2026-10-13)",
+   "page": "https://www.ihda.org/developers/tax-credits/",
+   "url": "https://www.ihda.org/wp-content/uploads/2026/10/IHDA_9PCT_5YR_20261013.xlsx",
+   "fetched": "2026-10",
+   "cols": {
+    "PROJECT": "^Development$",
+    "PROJ_ADD": "^Address$",
+    "PROJ_CTY": "^City$",
+    "PROJ_ZIP": "^Zip$",
+    "TYPE": "^Construction$",
+    "N_UNITS": "^Units$",
+    "ALLOCAMT": "^Annual Allocation",
+    "YR_ALLOC": "^Initial Board Date",
+    "COMPANY": "^Primary Sponsor$"
+   },
+   "const": {
+    "CREDIT": "9%"
+   },
+   "year_fallback": "^Current Board Date",
+   "drop": {
+    "^Project Status": "^PPA"
+   }
+  },
+  {
+   "st": "IL",
+   "file": "il_IHDA_9PCT_HST_20261013.xlsx",
+   "sheets": "*",
+   "label": "Illinois Housing Development Authority 9% allocations, historical (updated 2026-10-13)",
+   "page": "https://www.ihda.org/developers/tax-credits/",
+   "url": "https://www.ihda.org/wp-content/uploads/2026/10/IHDA_9PCT_HST_20261013.xlsx",
+   "fetched": "2026-10",
+   "cols": {
+    "PROJECT": "^Development$",
+    "PROJ_ADD": "^Address$",
+    "PROJ_CTY": "^City$",
+    "PROJ_ZIP": "^Zip$",
+    "TYPE": "^Construction$",
+    "N_UNITS": "^Units$",
+    "ALLOCAMT": "^Annual Allocation",
+    "YR_ALLOC": "^Initial Board Date",
+    "COMPANY": "^Primary Sponsor$"
+   },
+   "const": {
+    "CREDIT": "9%"
+   },
+   "year_fallback": "^Current Board Date",
+   "drop": {
+    "^Project Status": "^PPA"
+   }
+  },
+  {
+   "st": "IL",
+   "file": "il_IHDA_4PCT_5YR_20261013.xlsx",
+   "sheets": "*",
+   "label": "Illinois Housing Development Authority 4% allocations, last 5 years (updated 2026-10-13)",
+   "page": "https://www.ihda.org/developers/tax-credits/",
+   "url": "https://www.ihda.org/wp-content/uploads/2026/10/IHDA_4PCT_5YR_20261013.xlsx",
+   "fetched": "2026-10",
+   "cols": {
+    "PROJECT": "^Development$",
+    "PROJ_ADD": "^Address$",
+    "PROJ_CTY": "^City$",
+    "PROJ_ZIP": "^Zip$",
+    "TYPE": "^Construction$",
+    "N_UNITS": "^Units$",
+    "ALLOCAMT": "^Annual Allocation",
+    "YR_ALLOC": "^Initial Board Date",
+    "COMPANY": "^Primary Sponsor$"
+   },
+   "const": {
+    "CREDIT": "4% (bond)"
+   },
+   "year_fallback": "^Current Board Date",
+   "drop": {
+    "^Project Status": "^PPA"
+   }
+  },
+  {
+   "st": "IL",
+   "file": "il_IHDA_4PCT_HST_20261013.xlsx",
+   "sheets": "*",
+   "label": "Illinois Housing Development Authority 4% allocations, historical (updated 2026-10-13)",
+   "page": "https://www.ihda.org/developers/tax-credits/",
+   "url": "https://www.ihda.org/wp-content/uploads/2026/10/IHDA_4PCT_HST_20261013.xlsx",
+   "fetched": "2026-10",
+   "cols": {
+    "PROJECT": "^Development$",
+    "PROJ_ADD": "^Address$",
+    "PROJ_CTY": "^City$",
+    "PROJ_ZIP": "^Zip$",
+    "TYPE": "^Construction$",
+    "N_UNITS": "^Units$",
+    "ALLOCAMT": "^Annual Allocation",
+    "YR_ALLOC": "^Initial Board Date",
+    "COMPANY": "^Primary Sponsor$"
+   },
+   "const": {
+    "CREDIT": "4% (bond)"
+   },
+   "year_fallback": "^Current Board Date",
+   "drop": {
+    "^Project Status": "^PPA"
+   }
+  },
+  {
+   "st": "OH",
+   "file": "oh_2020-HTC-CompetitiveAwards.xlsx",
+   "sheets": [
+    "Results"
+   ],
+   "header_rows": 20,
+   "label": "Ohio Housing Finance Agency 2020 9% housing credit reservations",
+   "page": "https://ohiohome.org/ppd/housingcredits.aspx",
+   "url": "https://ohiohome.org/ppd/documents/2020-HTC-CompetitiveAwards.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name$",
+    "STATE_ID": "Tracking|OHFA ID",
+    "PROJ_CTY": "^City$",
+    "N_UNITS": "^Total Units$|^# of units",
+    "COMPANY": "Developer",
+    "ALLOCAMT": "Credits\\s+Reserved"
+   },
+   "const": {
+    "CREDIT": "9%",
+    "YR_ALLOC": "2020"
+   },
+   "skip": "^(total|subtotal)"
+  },
+  {
+   "st": "OH",
+   "file": "oh_2021-HTC-CompetitiveAwards.xlsx",
+   "sheets": [
+    "Results"
+   ],
+   "header_rows": 20,
+   "label": "Ohio Housing Finance Agency 2021 9% housing credit reservations",
+   "page": "https://ohiohome.org/ppd/housingcredits.aspx",
+   "url": "https://ohiohome.org/ppd/documents/2021-HTC-CompetitiveAwards.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name$",
+    "STATE_ID": "Tracking|OHFA ID",
+    "PROJ_CTY": "^City$",
+    "N_UNITS": "^Total Units$|^# of units",
+    "COMPANY": "Developer",
+    "ALLOCAMT": "Credits\\s+Reserved"
+   },
+   "const": {
+    "CREDIT": "9%",
+    "YR_ALLOC": "2021"
+   },
+   "skip": "^(total|subtotal)"
+  },
+  {
+   "st": "OH",
+   "file": "oh_2022-HTC-FinalResults.xlsx",
+   "sheets": [
+    "Final Results - Full"
+   ],
+   "header_rows": 20,
+   "label": "Ohio Housing Finance Agency 2022 9% housing credit reservations",
+   "page": "https://ohiohome.org/ppd/housingcredits.aspx",
+   "url": "https://ohiohome.org/ppd/documents/2022-HTC-FinalResults.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name$",
+    "STATE_ID": "Tracking|OHFA ID",
+    "PROJ_CTY": "^City$",
+    "N_UNITS": "^Total Units$|^# of units",
+    "COMPANY": "Developer",
+    "ALLOCAMT": "Credits\\s+Reserved"
+   },
+   "const": {
+    "CREDIT": "9%",
+    "YR_ALLOC": "2022"
+   },
+   "skip": "^(total|subtotal)"
+  },
+  {
+   "st": "OH",
+   "file": "oh_2023-HTC-FinalResults.xlsx",
+   "sheets": [
+    "Sheet1"
+   ],
+   "header_rows": 20,
+   "label": "Ohio Housing Finance Agency 2023 9% housing credit reservations",
+   "page": "https://ohiohome.org/ppd/housingcredits.aspx",
+   "url": "https://ohiohome.org/ppd/documents/2023-HTC-FinalResults.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name$",
+    "STATE_ID": "Tracking|OHFA ID",
+    "PROJ_CTY": "^City$",
+    "N_UNITS": "^Total Units$|^# of units",
+    "COMPANY": "Developer",
+    "ALLOCAMT": "Credits\\s+Reserved"
+   },
+   "const": {
+    "CREDIT": "9%",
+    "YR_ALLOC": "2023"
+   },
+   "skip": "^(total|subtotal)"
+  },
+  {
+   "st": "OH",
+   "file": "oh_2024-9-LIHTC-Reservations.xlsx",
+   "sheets": [
+    "Sheet2"
+   ],
+   "header_rows": 20,
+   "label": "Ohio Housing Finance Agency 2024 9% housing credit reservations",
+   "page": "https://ohiohome.org/ppd/housingcredits.aspx",
+   "url": "https://ohiohome.org/ppd/documents/2024-9-LIHTC-Reservations.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name$",
+    "STATE_ID": "Tracking|OHFA ID",
+    "PROJ_CTY": "^City$",
+    "N_UNITS": "^Total Units$|^# of units",
+    "COMPANY": "Developer",
+    "ALLOCAMT": "Credits\\s+Reserved"
+   },
+   "const": {
+    "CREDIT": "9%",
+    "YR_ALLOC": "2024"
+   },
+   "skip": "^(total|subtotal)"
+  },
+  {
+   "st": "OH",
+   "file": "oh_2025-9-LIHTC-Reservations.xlsx",
+   "sheets": [
+    "Sheet2"
+   ],
+   "header_rows": 20,
+   "label": "Ohio Housing Finance Agency 2025 9% housing credit reservations",
+   "page": "https://ohiohome.org/ppd/housingcredits.aspx",
+   "url": "https://ohiohome.org/ppd/documents/2025-9-LIHTC-Reservations.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name$",
+    "STATE_ID": "Tracking|OHFA ID",
+    "PROJ_CTY": "^City$",
+    "N_UNITS": "^Total Units$|^# of units",
+    "COMPANY": "Developer",
+    "ALLOCAMT": "Credits\\s+Reserved"
+   },
+   "const": {
+    "CREDIT": "9%",
+    "YR_ALLOC": "2025"
+   },
+   "skip": "^(total|subtotal)"
+  },
+  {
+   "st": "OH",
+   "file": "oh_2026-9-LIHTC-Reservations.xlsx",
+   "sheets": [
+    "Reservations"
+   ],
+   "header_rows": 20,
+   "label": "Ohio Housing Finance Agency 2026 9% housing credit reservations",
+   "page": "https://ohiohome.org/ppd/housingcredits.aspx",
+   "url": "https://ohiohome.org/ppd/documents/2026-9-LIHTC-Reservations.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name$",
+    "STATE_ID": "Tracking|OHFA ID",
+    "PROJ_CTY": "^City$",
+    "N_UNITS": "^Total Units$|^# of units",
+    "COMPANY": "Developer",
+    "ALLOCAMT": "Credits\\s+Reserved"
+   },
+   "const": {
+    "CREDIT": "9%",
+    "YR_ALLOC": "2026"
+   },
+   "skip": "^(total|subtotal)"
+  },
+  {
+   "st": "OH",
+   "file": "oh_2022-4Percent-BGF-Awards.xlsx",
+   "sheets": [
+    "BGF Results"
+   ],
+   "header_rows": 20,
+   "label": "Ohio Housing Finance Agency 2022 4% LIHTC with Bond Gap Financing awards",
+   "page": "https://ohiohome.org/ppd/housingcredits.aspx",
+   "url": "https://ohiohome.org/ppd/documents/2022-4Percent-BGF-Awards.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Project Name$",
+    "STATE_ID": "Tracking|OHFA ID",
+    "PROJ_CTY": "^City$",
+    "N_UNITS": "^Total Units$|^# of units",
+    "COMPANY": "Developer",
+    "ALLOCAMT": "Credits\\s+Reserved"
+   },
+   "const": {
+    "CREDIT": "4% (bond)",
+    "YR_ALLOC": "2022"
+   },
+   "skip": "^(total|subtotal)"
+  },
+  {
+   "st": "NM",
+   "csv_std": true,
+   "file": "extracted/nm.csv",
+   "label": "Housing New Mexico housing tax credit awards",
+   "page": "https://housingnm.org/developers/housing-tax-credits",
+   "url": "https://housingnm.org/uploads/documents/2001-2026_Housing_Tax_Credit_Awards_05.22.2026.xlsx",
+   "fetched": "2026-08"
+  },
+  {
+   "st": "FL",
+   "file": "fl_shimberg_ahi.xlsx",
+   "sheets": [
+    "Sheet 2"
+   ],
+   "label": "Florida Housing Data Clearinghouse (Shimberg Center) assisted housing inventory, FHFC housing credits",
+   "page": "https://flhousingdata.shimberg.ufl.edu/affordable-rental-housing/results?nid=1",
+   "url": "https://flhousingdata.shimberg.ufl.edu/api/excel/assisted-housing-inventory?nid=1",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Development Name$",
+    "STATE_ID": "^FHFC Key$",
+    "PROJ_ADD": "^Street Address$",
+    "PROJ_CTY": "^City$",
+    "PROJ_ZIP": "^Zip Code$",
+    "YR_ALLOC": "^HC 9% Funding Year$",
+    "N_UNITS": "^Total Units$",
+    "LI_UNITS": "^Assisted Units$",
+    "LAT": "^Latitude$",
+    "LON": "^Longitude$",
+    "COMPANY": "^Developer Name"
+   },
+   "const": {
+    "CREDIT": "9%"
+   },
+   "drop": {
+    "^Has Housing Credits 9%$": "^(?!x$)"
+   }
+  },
+  {
+   "st": "FL",
+   "file": "fl_shimberg_ahi.xlsx",
+   "sheets": [
+    "Sheet 2"
+   ],
+   "label": "Florida Housing Data Clearinghouse (Shimberg Center) assisted housing inventory, FHFC housing credits",
+   "page": "https://flhousingdata.shimberg.ufl.edu/affordable-rental-housing/results?nid=1",
+   "url": "https://flhousingdata.shimberg.ufl.edu/api/excel/assisted-housing-inventory?nid=1",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Development Name$",
+    "STATE_ID": "^FHFC Key$",
+    "PROJ_ADD": "^Street Address$",
+    "PROJ_CTY": "^City$",
+    "PROJ_ZIP": "^Zip Code$",
+    "YR_ALLOC": "^HC 4% Funding Year$",
+    "N_UNITS": "^Total Units$",
+    "LI_UNITS": "^Assisted Units$",
+    "LAT": "^Latitude$",
+    "LON": "^Longitude$",
+    "COMPANY": "^Developer Name"
+   },
+   "const": {
+    "CREDIT": "4% (bond)"
+   },
+   "drop": {
+    "^Has Housing Credits 4%$": "^(?!x$)"
+   }
+  },
+  {
+   "st": "GA",
+   "file": "ga_9pct.json",
+   "label": "Georgia DCA 9% housing tax credit properties (map layer)",
+   "page": "https://dca.georgia.gov/affordable-housing/rental-housing-development/housing-tax-credit-program",
+   "url": "https://services2.arcgis.com/Gqyymy5JISeLzyNM/arcgis/rest/services/9_Percent_LIHTC_Properties/FeatureServer/0",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^PropName$",
+    "STATE_ID": "^ProjID$",
+    "YR_ALLOC": "^ProjID$",
+    "PROJ_ADD": "^Address$",
+    "PROJ_CTY": "^City_1$",
+    "PROJ_ZIP": "^Zip$",
+    "N_UNITS": "^Units$",
+    "LI_UNITS": "^LIunits$",
+    "TYPE": "^NCorAReh$|^ConsType$",
+    "LAT": "^Y$",
+    "LON": "^X$"
+   },
+   "const": {
+    "CREDIT": "9%"
+   }
+  },
+  {
+   "st": "GA",
+   "file": "ga_4pct.json",
+   "label": "Georgia DCA 4% housing tax credit properties (map layer)",
+   "page": "https://dca.georgia.gov/affordable-housing/rental-housing-development/housing-tax-credit-program",
+   "url": "https://services2.arcgis.com/Gqyymy5JISeLzyNM/arcgis/rest/services/4_Percent_LIHTC_Properties_shp/FeatureServer/0",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^PropName$",
+    "STATE_ID": "^ProjecID$",
+    "YR_ALLOC": "^ProjecID$",
+    "PROJ_ADD": "^Address$",
+    "PROJ_CTY": "^City_1$",
+    "PROJ_ZIP": "^Zip$",
+    "N_UNITS": "^Units$",
+    "LI_UNITS": "^LIunits$",
+    "TYPE": "^NCorAReh$|^ConsType$",
+    "LAT": "^Y$",
+    "LON": "^X$"
+   },
+   "const": {
+    "CREDIT": "4% (bond)"
+   }
+  },
+  {
+   "st": "SC",
+   "file": "sc_lihtc_bond_1988_2026.xlsx",
+   "sheets": "*",
+   "label": "SC Housing proposed and existing LIHTC and tax-exempt bond developments, 1988-2026 (2026-09-15)",
+   "page": "https://schousing.sc.gov/partners/developers/low-income-housing-tax-credit-program",
+   "url": "https://schousing.sc.gov/sites/schousing/files/Documents/Development/LIHTC/2026%20LIHTC%20Program/Proposed_Existing%20_LIHTC_and_Tax-Exempt_Bond_Developments_(1988%20-2026)%2020260915.xlsx",
+   "fetched": "2026-09",
+   "cols": {
+    "PROJECT": "^Development Name$",
+    "STATE_ID": "^Development #$",
+    "YR_ALLOC": "^Year$",
+    "PROJ_ADD": "^Address$",
+    "PROJ_CTY": "^City$",
+    "N_UNITS": "^# of Units$",
+    "TYPE": "^NC or Rehab$",
+    "CREDIT": "^TEB, 9%, or 4%$"
+   }
+  },
+  {
+   "st": "VA",
+   "file": "va_tax_credit_property_listing.xlsx",
+   "sheets": "*",
+   "label": "Virginia Housing tax credit property listing (as of 2026-11-04)",
+   "page": "https://www.virginiahousing.com/partners/rental-housing/rental-financing-tax-credits",
+   "url": "https://www.virginiahousing.com/-/media/docs/partners/rental-housing/rental-financing-tax-credits/more/tax-credit-property-listing.xlsx",
+   "fetched": "2026-11",
+   "cols": {
+    "PROJECT": "^Property Name$",
+    "STATE_ID": "^VHDA#$",
+    "PROJ_ADD": "^Street Address$",
+    "PROJ_CTY": "^City$",
+    "PROJ_ZIP": "^Zip$",
+    "LI_UNITS": "^Tax Credit Units$",
+    "N_UNITS": "^Total Units$",
+    "YR_ALLOC": "^Cycle Name$",
+    "CREDIT": "^Cycle Name$",
+    "TYPE": "^Building Type$"
+   }
+  },
+  {
+   "st": "PA",
+   "csv_std": true,
+   "file": "extracted/pa.csv",
+   "label": "Pennsylvania Housing Finance Agency housing tax credit awards / property list",
+   "page": "https://www.phfa.org/forms/multifamily_news/news/2024/2024-lihtc-awards.pdf",
+   "url": "https://www.phfa.org/forms/multifamily_news/news/2024/2024-lihtc-awards.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/pa.py"
+  },
+  {
+   "st": "NJ",
+   "csv_std": true,
+   "file": "extracted/nj.csv",
+   "label": "New Jersey Housing and Mortgage Finance Agency housing tax credit awards / property list",
+   "page": "https://www.nj.gov/dca/hmfa/developers/docs/lihtc/tax/awards/4percent_through_june3_2025.pdf",
+   "url": "https://www.nj.gov/dca/hmfa/developers/docs/lihtc/tax/awards/4percent_through_june3_2025.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/nj.py"
+  },
+  {
+   "st": "CT",
+   "csv_std": true,
+   "file": "extracted/ct.csv",
+   "label": "Connecticut Housing Finance Authority housing tax credit awards / property list",
+   "page": "https://www.chfa.org/assets/1/6/2021_LIHTC_Award_List_-_9_.pdf",
+   "url": "https://www.chfa.org/assets/1/6/2021_LIHTC_Award_List_-_9_.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ct.py"
+  },
+  {
+   "st": "NC",
+   "csv_std": true,
+   "file": "extracted/nc.csv",
+   "label": "North Carolina Housing Finance Agency housing tax credit awards / property list",
+   "page": "https://www.nchfa.com/rental-housing-partners/rental-developers/find-awarded-projects",
+   "url": "https://www.nchfa.com/rental-housing-partners/rental-developers/find-awarded-projects",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/nc.py"
+  },
+  {
+   "st": "MD",
+   "csv_std": true,
+   "file": "extracted/md.csv",
+   "label": "Maryland DHCD housing tax credit awards / property list",
+   "page": "https://dhcd.maryland.gov/media/4306",
+   "url": "https://dhcd.maryland.gov/media/4306",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/md.py"
+  },
+  {
+   "st": "DE",
+   "csv_std": true,
+   "file": "extracted/de.csv",
+   "label": "Delaware State Housing Authority housing tax credit awards / property list",
+   "page": "https://www.destatehousing.com/wp-content/uploads/2024/02/2022-dsha-taxcreditpreliminaryranking.pdf",
+   "url": "https://www.destatehousing.com/wp-content/uploads/2024/02/2022-dsha-taxcreditpreliminaryranking.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/de.py"
+  },
+  {
+   "st": "NY",
+   "csv_std": true,
+   "file": "extracted/ny.csv",
+   "label": "New York State HCR / NYC HPD housing tax credit awards / property list",
+   "page": "https://services8.arcgis.com/ek7Sxtay3Z4WZWvk/arcgis/rest/services/dhcr_2026q2_public/FeatureServer/138",
+   "url": "https://services8.arcgis.com/ek7Sxtay3Z4WZWvk/arcgis/rest/services/dhcr_2026q2_public/FeatureServer/138",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ny.py"
+  },
+  {
+   "st": "VT",
+   "csv_std": true,
+   "file": "extracted/vt.csv",
+   "label": "Vermont Housing Finance Agency housing tax credit awards / property list",
+   "page": "https://vhfa.org/developers/lihtc/reservations-and-allocations/csv-export?page&_format=csv",
+   "url": "https://vhfa.org/developers/lihtc/reservations-and-allocations/csv-export?page&_format=csv",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/vt.py"
+  },
+  {
+   "st": "NH",
+   "csv_std": true,
+   "file": "extracted/nh.csv",
+   "label": "New Hampshire Housing housing tax credit awards / property list",
+   "page": "https://www.nhhousing.org/wp-content/uploads/2026/05/NH-Housing-FY25-Multifamily-Housing-Division.pdf",
+   "url": "https://www.nhhousing.org/wp-content/uploads/2026/05/NH-Housing-FY25-Multifamily-Housing-Division.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/nh.py"
+  },
+  {
+   "st": "ID",
+   "csv_std": true,
+   "file": "extracted/id.csv",
+   "label": "Idaho Housing and Finance Association housing tax credit awards / property list",
+   "page": "https://www.idahohousing.com/documents/2020-lihtc-allocation-list.pdf",
+   "url": "https://www.idahohousing.com/documents/2020-lihtc-allocation-list.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/id.py"
+  },
+  {
+   "st": "WY",
+   "csv_std": true,
+   "file": "extracted/wy.csv",
+   "label": "Wyoming Community Development Authority housing tax credit awards / property list",
+   "page": "https://www.wyomingcda.com/wp-content/uploads/2026/05/Awards-by-Year-for-Website-5.18.26.pdf",
+   "url": "https://www.wyomingcda.com/wp-content/uploads/2026/05/Awards-by-Year-for-Website-5.18.26.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/wy.py"
+  },
+  {
+   "st": "SD",
+   "csv_std": true,
+   "file": "extracted/sd.csv",
+   "label": "South Dakota Housing housing tax credit awards / property list",
+   "page": "https://www.sdhousing.org/s/HTCReservationsCumulativeWebsite123125.pdf",
+   "url": "https://www.sdhousing.org/s/HTCReservationsCumulativeWebsite123125.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/sd.py"
+  },
+  {
+   "st": "HI",
+   "csv_std": true,
+   "file": "extracted/hi.csv",
+   "label": "Hawaii Housing Finance and Development Corp. housing tax credit awards / property list",
+   "page": "https://dbedt.hawaii.gov/hhfdc/files/2026/02/2022_Combined_Awards_4_LIHTC_Scores.pdf",
+   "url": "https://dbedt.hawaii.gov/hhfdc/files/2026/02/2022_Combined_Awards_4_LIHTC_Scores.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/hi.py"
+  },
+  {
+   "st": "IA",
+   "csv_std": true,
+   "file": "extracted/ia.csv",
+   "label": "Iowa Finance Authority housing tax credit awards / property list",
+   "page": "https://opportunityiowa.gov/media/6048/download?inline",
+   "url": "https://opportunityiowa.gov/media/6048/download?inline",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ia.py"
+  },
+  {
+   "st": "AR",
+   "csv_std": true,
+   "file": "extracted/ar.csv",
+   "label": "Arkansas Development Finance Authority housing tax credit awards / property list",
+   "page": "https://adfa.arkansas.gov/wp-content/uploads/2026/05/2026-9-LIHTC-Reservations-with-Riparian.pdf",
+   "url": "https://adfa.arkansas.gov/wp-content/uploads/2026/05/2026-9-LIHTC-Reservations-with-Riparian.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ar.py"
+  },
+  {
+   "st": "UT",
+   "csv_std": true,
+   "file": "extracted/ut.csv",
+   "label": "Utah Housing Corp. housing tax credit awards / property list",
+   "page": "https://utahhousingcorp.org/pdf/federal_and_state_credit_awards_2023.pdf",
+   "url": "https://utahhousingcorp.org/pdf/federal_and_state_credit_awards_2023.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ut.py"
+  },
+  {
+   "st": "CO",
+   "csv_std": true,
+   "file": "extracted/co.csv",
+   "label": "Colorado Housing and Finance Authority housing tax credit awards / property list",
+   "page": "https://www.chfainfo.com/getContentAsset/34a30942-e08d-494a-8bc7-f236ebf01e98/50c2bc4c-a8ff-46ba-95c2-0e74752d147f/federal-4-housing-tax-credit-award-report.pdf?language=en-US",
+   "url": "https://www.chfainfo.com/getContentAsset/34a30942-e08d-494a-8bc7-f236ebf01e98/50c2bc4c-a8ff-46ba-95c2-0e74752d147f/federal-4-housing-tax-credit-award-report.pdf?language=en-US",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/co.py"
+  },
+  {
+   "st": "OK",
+   "csv_std": true,
+   "file": "extracted/ok.csv",
+   "label": "Oklahoma Housing Finance Agency housing tax credit awards / property list",
+   "page": "https://www.ohfa.org/wp-content/uploads/2022/11/2022-2nd-Round-Awards.pdf",
+   "url": "https://www.ohfa.org/wp-content/uploads/2022/11/2022-2nd-Round-Awards.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ok.py"
+  },
+  {
+   "st": "NE",
+   "csv_std": true,
+   "file": "extracted/ne.csv",
+   "label": "Nebraska Investment Finance Authority housing tax credit awards / property list",
+   "page": "https://www-nifa-org-files.s3.amazonaws.com/c916-46383867-Reservation_List_2021.pdf",
+   "url": "https://www-nifa-org-files.s3.amazonaws.com/c916-46383867-Reservation_List_2021.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ne.py"
+  },
+  {
+   "st": "KS",
+   "csv_std": true,
+   "file": "extracted/ks.csv",
+   "label": "Kansas Housing Resources Corp. housing tax credit awards / property list",
+   "page": "https://kshousingcorp.org/wp-content/uploads/2025/11/PAB-Allocation-List-11.14.2025.pdf",
+   "url": "https://kshousingcorp.org/wp-content/uploads/2025/11/PAB-Allocation-List-11.14.2025.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ks.py"
+  },
+  {
+   "st": "AL",
+   "csv_std": true,
+   "file": "extracted/al.csv",
+   "label": "Alabama Housing Finance Authority housing tax credit awards / property list",
+   "page": "https://ahfa.atl1.cdn.digitaloceanspaces.com/multifamily/allocation-and-application-info/archives/2020-home_hc_htf-funding-approvals_062520.pdf",
+   "url": "https://ahfa.atl1.cdn.digitaloceanspaces.com/multifamily/allocation-and-application-info/archives/2020-home_hc_htf-funding-approvals_062520.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/al.py"
+  },
+  {
+   "st": "WV",
+   "csv_std": true,
+   "file": "extracted/wv.csv",
+   "label": "West Virginia Housing Development Fund housing tax credit awards / property list",
+   "page": "https://www.wvhdf.com/wp-content/uploads/2026/02/2024-Credit-Allocation-Recipients-List-1-1.pdf",
+   "url": "https://www.wvhdf.com/wp-content/uploads/2026/02/2024-Credit-Allocation-Recipients-List-1-1.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/wv.py"
+  },
+  {
+   "st": "IN",
+   "csv_std": true,
+   "file": "extracted/in.csv",
+   "label": "Indiana Housing and Community Development Authority housing tax credit awards / property list",
+   "page": "https://www.in.gov/ihcda/files/2026A-C-Awarded-List.pdf",
+   "url": "https://www.in.gov/ihcda/files/2026A-C-Awarded-List.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/in.py"
+  },
+  {
+   "st": "WI",
+   "csv_std": true,
+   "file": "extracted/wi.csv",
+   "label": "Wisconsin Housing and Economic Development Authority housing tax credit awards / property list",
+   "page": "https://www.wheda.com/developers-and-property-managers/tax-credits/monitored-htc-projects",
+   "url": "https://www.wheda.com/developers-and-property-managers/tax-credits/monitored-htc-projects",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/wi.py"
+  },
+  {
+   "st": "MS",
+   "csv_std": true,
+   "file": "extracted/ms.csv",
+   "label": "Mississippi Home Corp. housing tax credit awards / property list",
+   "page": "https://archivemhc.com/htc/2020/2020%20RECIPIENT%20LIST.pdf",
+   "url": "https://archivemhc.com/htc/2020/2020%20RECIPIENT%20LIST.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ms.py"
+  },
+  {
+   "st": "TN",
+   "csv_std": true,
+   "file": "extracted/tn.csv",
+   "label": "Tennessee Housing Development Agency housing tax credit awards / property list",
+   "page": "https://dogvxws799i6n.cloudfront.net/wp-content/uploads/2024-MTBA-Listing-for-Website-Closing_Carryforward.pdf",
+   "url": "https://dogvxws799i6n.cloudfront.net/wp-content/uploads/2024-MTBA-Listing-for-Website-Closing_Carryforward.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/tn.py"
+  },
+  {
+   "st": "KY",
+   "csv_std": true,
+   "file": "extracted/ky.csv",
+   "label": "Kentucky Housing Corp. housing tax credit awards / property list",
+   "page": "https://wapps.kyhousing.org/KHC_Webforms/Reports.aspx?rpt=/External_Report/Multifamily_Internet_Project_Listing",
+   "url": "https://wapps.kyhousing.org/KHC_Webforms/Reports.aspx?rpt=/External_Report/Multifamily_Internet_Project_Listing",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ky.py"
+  },
+  {
+   "st": "WA",
+   "csv_std": true,
+   "file": "extracted/wa.csv",
+   "label": "Washington State Housing Finance Commission housing tax credit awards / property list",
+   "page": "https://wshfc.org/sites/default/files/2026-04/2025%2520TC%2520ReportTypesbyPropertyName.xlsx",
+   "url": "https://wshfc.org/sites/default/files/2026-04/2025%2520TC%2520ReportTypesbyPropertyName.xlsx",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/wa.py"
+  },
+  {
+   "st": "ND",
+   "csv_std": true,
+   "file": "extracted/nd.csv",
+   "label": "North Dakota Housing Finance Agency housing tax credit awards / property list",
+   "page": "https://www.ndhousing.nd.gov/sites/default/files/documents/Development/MasterProjectList2026.pdf",
+   "url": "https://www.ndhousing.nd.gov/sites/default/files/documents/Development/MasterProjectList2026.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/nd.py"
+  },
+  {
+   "st": "MO",
+   "csv_std": true,
+   "file": "extracted/mo.csv",
+   "label": "Missouri Housing Development Commission housing tax credit awards / property list",
+   "page": "https://mhdc.com/media/djleeqxz/2020-4-9-rental-production-approved-applications.pdf",
+   "url": "https://mhdc.com/media/djleeqxz/2020-4-9-rental-production-approved-applications.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/mo.py"
+  },
+  {
+   "st": "LA",
+   "csv_std": true,
+   "file": "extracted/la.csv",
+   "label": "Louisiana Housing Corp. housing tax credit awards / property list",
+   "page": "https://webapps3.lhc.la.gov/documents/BoardCommitteeMaterials/2023/November/BODM/FULL_Final_Pipeline_Report_10_2023.pdf",
+   "url": "https://webapps3.lhc.la.gov/documents/BoardCommitteeMaterials/2023/November/BODM/FULL_Final_Pipeline_Report_10_2023.pdf",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/la.py"
+  },
+  {
+   "st": "AK",
+   "csv_std": true,
+   "file": "extracted/ak.csv",
+   "label": "Alaska Housing Finance Corp. housing tax credit awards / property list",
+   "page": "https://www.ahfc.us/download_file/view/6242/551",
+   "url": "https://www.ahfc.us/download_file/view/6242/551",
+   "fetched": "2026-11",
+   "script": "tools/state_pdf/ak.py"
+  }
+ ]
+}
