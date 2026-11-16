@@ -70,8 +70,9 @@ function start(D) {
     p.county = titleCase(p.county); p.city = titleCase(p.city);
     p.hay = [p.name, p.addr, p.city, p.zip, p.county, p.owner, p.mgmt, p.id].join(' ').toLowerCase();
   }
+  // One entry per property and firm (that firm's latest study there), newest first; p.rcs = the property's latest from any firm.
   for (const r of RCS) {
-    r.p = pById.get(r.id); r.p.rcs = r;
+    r.p = pById.get(r.id); (r.p.studies = r.p.studies || []).push(r); if (!r.p.rcs) r.p.rcs = r;
     r.ratio = median(r.asis.map(x => x.pct).filter(ok));                                   // vs SAFMR on the study date
     r.ratio27 = median(r.asis.map(x => ok(x.pct27) ? x.pct27 : x.pct).filter(ok));         // the same dollars vs today's SAFMR
     r.asis.forEach((x, i) => { x.renRow = r.ren.length === r.asis.length ? r.ren[i] : r.ren.find(y => y.unit === x.unit && y.sf === x.sf) || null; });
@@ -95,10 +96,12 @@ function start(D) {
     m36: ['Studies from the last 3 years', r => r.date >= addMonths(-36)],
     final: ['Final reports and grids (no prelims)', r => !r.prelim],
   };
-  for (const s of [...new Set(RCS.map(r => r.signer).filter(Boolean))].sort()) CAL['by:' + s] = ['Studies signed by ' + s, r => r.signer === s];
-  const studyOk = r => CAL[S.cal][1](r) && ok(r.ratio);
-  function calib(setKey) {
-    const set = RCS.filter(CAL[setKey][1]).filter(r => ok(r.ratio));
+  const firmN = {};
+  for (const r of RCS) firmN[r.firm] = (firmN[r.firm] || 0) + 1;
+  const FIRMS = Object.keys(firmN).sort((a, b) => firmN[b] - firmN[a] || a.localeCompare(b));
+  const studyOk = r => S.firms.has(r.firm) && CAL[S.cal][1](r) && ok(r.ratio);
+  function calib(setKey, firms) {
+    const set = RCS.filter(r => CAL[setKey][1](r) && (!firms || firms.has(r.firm)) && ok(r.ratio));
     const ps = set.map(r => r.ratio), byBed = {}, byYear = {};
     for (const r of set) {
       const g = {};
@@ -117,7 +120,7 @@ function start(D) {
   }
   const ROPTS = Object.keys(ropCount).sort((a, b) => (a === '—') - (b === '—') || a.localeCompare(b));
   const DEF = () => ({ q: '', county: '', radius: 5, combine: 'idw', cal: 'all', bedMatch: true, useOwn: true, rcsMode: 'auto',
-    fallback: 'none', ratio: Math.round(calib('all').med * 100), fee: 5,
+    fallback: 'none', ratio: Math.round(calib('all').med * 100), fee: 5, firms: new Set(FIRMS),
     docs: new Set(['HAP']), ropts: new Set(ROPTS), oldCons: false, exp: '', minUnits: '', minGap: '', minAnnual: '', rcsOnly: false, showNoEst: false });
   const S = Object.assign(DEF(), { view: 'props', sel: null, limit: 300,
     sort: { props: { i: 'annual', d: -1 }, lines: { i: 'annual', d: -1 }, rcs: { i: 'date', d: -1 }, safmr: { i: 'props', d: -1 } } });
@@ -153,7 +156,7 @@ function start(D) {
     }
     return { k, parts };
   }
-  const ownStudy = p => S.useOwn && p.rcs && studyOk(p.rcs) ? p.rcs : null;
+  const ownStudy = p => S.useOwn && p.studies ? p.studies.find(studyOk) || null : null;   // latest usable study at the property
   function lineEst(p, ln) {
     const saf = ln.s27 ?? ln.fmr, safSrc = ln.s27 != null ? 'SAFMR' : ln.fmr != null ? 'area FMR' : null;
     const gross = ln.rent + ln.ua;
@@ -177,7 +180,7 @@ function start(D) {
   }
   const plural = (n, w) => `${n} ${n === 1 ? w : w.replace(/y$/, 'ie') + 's'}`;
   function basisText(p, e) {
-    if (e.basis === 'own') return `Own study ${p.rcs.date.slice(0, 7)}`;
+    if (e.basis === 'own') return `Own study ${e.parts[0].r.date.slice(0, 7)}`;
     if (e.basis === 'near') return e.parts.length === 1 ? `${e.parts[0].r.name} (${mi(e.parts[0].d)} mi)` : `${plural(e.parts.length, 'study')} within ${S.radius} mi`;
     if (e.basis === 'state') return `Statewide ${S.ratio}%`;
     return e.saf ? `No study within ${S.radius} mi` : 'No SAFMR';
@@ -188,7 +191,7 @@ function start(D) {
   let OUT = [], LINES = [], RROWS = [], ZROWS = [], COV = { n: 0, est: 0, hidden: 0 }, REACH = {};
   function build() {
     TOK++;
-    CALNOW = calib(S.cal);
+    CALNOW = calib(S.cal, S.firms);
     const q = S.q.trim().toLowerCase(), cut = S.exp ? addMonths(+S.exp) : null;
     OUT = []; LINES = []; COV = { n: 0, est: 0, hidden: 0 }; REACH = {};
     for (const p of P) {
@@ -214,7 +217,7 @@ function start(D) {
         k: KW ? KU / KW : null, own, refs, nearest, est,
         next: cs.map(c => c.exp).filter(Boolean).sort()[0] || null, ov: cs.map(c => c.ovExp).filter(Boolean).sort()[0] || null,
         docs: [...new Set(cs.map(c => c.doc || '—'))].join(', '), ropts: [...new Set(cs.map(c => ropCode(c.ropt)))].join(', '),
-        basis: bases.has('own') ? `Own study ${p.rcs.date.slice(0, 7)}` : bases.has('near') ? (refs.length === 1 ? `1 study within ${S.radius} mi` : `${refs.length} studies within ${S.radius} mi`)
+        basis: bases.has('own') ? `Own study ${own.date.slice(0, 7)}` : bases.has('near') ? (refs.length === 1 ? `1 study within ${S.radius} mi` : `${refs.length} studies within ${S.radius} mi`)
           : bases.has('state') ? `Statewide ${S.ratio}%` : `None within ${S.radius} mi` };
       if (cut && !(row.next && row.next <= cut)) continue;
       if (ok(S.minUnits) && U < +S.minUnits) continue;
@@ -223,12 +226,13 @@ function start(D) {
       if (ok(S.minGap) && !(row.gapU >= +S.minGap)) continue;
       if (ok(S.minAnnual) && !(row.annual >= +S.minAnnual)) continue;
       OUT.push(row);
-      if (!own) for (const o of refs) REACH[o.r.id] = (REACH[o.r.id] || 0) + 1;
+      if (!own) for (const o of refs) REACH[o.r.sid] = (REACH[o.r.sid] || 0) + 1;
       for (const ln of ls) LINES.push({ p, ln, e: ln.e, c: p.cons[ln.c] });
     }
     RROWS = [];
     for (const r of RCS) {
       const p = r.p;
+      if (!S.firms.has(r.firm)) continue;
       if (S.county && p.county !== S.county) continue;
       if (q && !p.hay.includes(q)) continue;
       for (const x of r.asis) RROWS.push({ p, r, x, now: hudNow(p, x.bed) });
@@ -293,8 +297,9 @@ function start(D) {
       C('name', 'Property', r => r.r.name, { f: r => `<b>${esc(r.r.name)}</b>` }),
       C('city', 'City', r => r.p.city),
       C('date', 'Last done', r => r.r.date, { f: r => esc(r.r.date) + (r.r.prelim ? ' <span class="b pre" title="Preliminary report">prelim</span>' : '') }),
-      C('reach', 'Props using it', r => REACH[r.r.id] || 0, { num: 1, tip: 'Properties in the current screen whose estimate draws on this study (within the radius)' }),
-      C('studies', 'Studies', r => r.r.history.length, { num: 1, tip: 'Studies on file for this property' }),
+      C('firm', 'Firm', r => r.r.firm),
+      C('reach', 'Props using it', r => REACH[r.r.sid] || 0, { num: 1, tip: 'Properties in the current screen whose estimate draws on this study (within the radius)' }),
+      C('studies', 'Studies', r => r.r.history.length, { num: 1, tip: 'Studies on file for this property, all firms' }),
       C('signer', 'Signed by', r => r.r.signer), C('client', 'Client', r => r.r.client),
       C('kind', 'Source', r => r.r.kind),
       C('unit', 'Unit', r => r.x.unit), C('runits', 'Units', r => r.x.units, { num: 1 }),
@@ -362,7 +367,8 @@ function start(D) {
         (COV.hidden ? ` · ${COV.hidden.toLocaleString()} more with no study within ${S.radius} mi not listed` : '');
     } else if (S.view === 'rcs') {
       const ps = new Set(RROWS.map(r => r.p.id));
-      t = `${RROWS.length} unit types across ${ps.size} properties · latest study per property, as-is conclusions`;
+      const ns = new Set(RROWS.map(r => r.r)).size;
+      t = `${RROWS.length} unit types · ${plural(ns, 'study')} across ${ps.size} properties · each firm's latest study per property, as-is conclusions`;
     } else t = `${ZROWS.length.toLocaleString()} California ZIPs in the FY2027 SAFMR file`;
     $('#summary').innerHTML = t;
   }
@@ -417,7 +423,7 @@ function start(D) {
     if (S.view !== 'rcs') for (const r of RCS) {
       if (byP.has(r.p) || !studyOk(r)) continue;
       const m = L.circleMarker([r.p.lat, r.p.lon], { radius: 6, weight: 2.5, color: '#111', fillColor: '#fff', fillOpacity: 0.9 });
-      m.bindTooltip(`${esc(r.name)} · rent study ${esc(r.date)}`);
+      m.bindTooltip(`${esc(r.name)} · ${esc(r.firm)} rent study ${esc(r.date)}`);
       m.on('click', () => select(r.p, false));
       studyDots.addLayer(m);
     }
@@ -434,10 +440,13 @@ function start(D) {
     if (!p) return;
     if (!ownStudy(p)) L.circle([p.lat, p.lon], { renderer: reachRenderer, radius: S.radius * 1609.344, color: '#1f4e99', weight: 1.5, dashArray: '6 6', fillColor: '#1f4e99', fillOpacity: 0.05, interactive: false }).addTo(ring);
     const refs = selRefs(p);
-    for (const o of refs) {
-      L.polyline([[p.lat, p.lon], [o.r.p.lat, o.r.p.lon]], { renderer: reachRenderer, color: '#1f4e99', weight: 2, opacity: 0.8, interactive: false }).addTo(ring);
-      if (refs.length <= 8) L.tooltip({ permanent: true, direction: 'right', offset: [8, 0], className: 'reftip' })
-        .setLatLng([o.r.p.lat, o.r.p.lon]).setContent(`${esc(o.r.name)} · ${mi(o.d)} mi · ${esc(o.r.date.slice(0, 7))}`).addTo(ring);
+    // Studies at the same property share one line and one label.
+    const atP = new Map();
+    for (const o of refs) { if (!atP.has(o.r.p)) atP.set(o.r.p, []); atP.get(o.r.p).push(o); }
+    for (const [sp, os] of atP) {
+      L.polyline([[p.lat, p.lon], [sp.lat, sp.lon]], { renderer: reachRenderer, color: '#1f4e99', weight: 2, opacity: 0.8, interactive: false }).addTo(ring);
+      if (atP.size <= 8) L.tooltip({ permanent: true, direction: 'right', offset: [8, 0], className: 'reftip' })
+        .setLatLng([sp.lat, sp.lon]).setContent(`${esc(os[0].r.name)} · ${mi(os[0].d)} mi · ` + os.map(o => `${esc(o.r.firm)} ${esc(o.r.date.slice(0, 7))}`).join(', ')).addTo(ring);
     }
     L.circleMarker([p.lat, p.lon], { radius: 12, color: '#b42318', weight: 3, fill: false, interactive: false }).addTo(ring);
   }
@@ -462,23 +471,23 @@ function start(D) {
     let h = '<h3>Where the estimate comes from</h3>';
     if (own) {
       const mode = modeFor(own);
-      return h + `<p class="note">This property's own rent study (${esc(own.date)}, ${esc(own.signer || 'signer unknown')}), ${mode === 'asis' ? 'used as concluded' : 'moved with SAFMR since the study date'}. Its details are below.</p>`;
+      return h + `<p class="note">This property's own rent study (${esc(own.firm)}, ${esc(own.date)}, ${esc(own.signer || 'signer unknown')}), ${mode === 'asis' ? 'used as concluded' : 'moved with SAFMR since the study date'}. Its details are below.</p>`;
     }
     const refs = refsFor(p);
     if (!refs.length) {
       const nearest = p.near.find(o => studyOk(o.r));
       h += `<p class="note">No rent study within ${S.radius} miles${S.fallback === 'state' ? `, so the statewide ${S.ratio}% is used` : ''}.`;
-      if (nearest) h += ` The nearest is <button class="link" data-goto="${esc(nearest.r.id)}">${esc(nearest.r.name)}</button>, ${mi(nearest.d)} miles away (${esc(nearest.r.date)}).
+      if (nearest) h += ` The nearest is <button class="link" data-goto="${esc(nearest.r.id)}">${esc(nearest.r.name)}</button>, ${mi(nearest.d)} miles away (${esc(nearest.r.firm)}, ${esc(nearest.r.date)}).
         <button class="link" data-widen="${Math.ceil(nearest.d)}">Widen the radius to ${Math.ceil(nearest.d)} miles</button>`;
       return h + '</p>';
     }
     const how = { idw: 'averaged, closer studies counting more (weight = 1 ÷ distance)', median: 'combined by median', nearest: 'nearest study only' }[S.combine];
     h += `<p class="note">${plural(refs.length, 'rent study')} within ${S.radius} miles, ${how}. Each column is that study's market gross as % of SAFMR for the bedroom count${S.bedMatch ? '; <span class="est">*</span> = the study has no unit of that size, so its median is used' : ' (study medians)'}.</p>`;
-    h += `<div class="scrollx"><table class="dt"><thead><tr><th>Study property</th><th class="num">Mi</th><th>Done</th><th>Signed by</th>${beds.map(b => `<th class="num">${bedName(b)}</th>`).join('')}${S.combine === 'idw' ? '<th class="num">Weight</th>' : ''}</tr></thead><tbody>`;
+    h += `<div class="scrollx"><table class="dt"><thead><tr><th>Study property</th><th class="num">Mi</th><th>Done</th><th>Firm</th>${beds.map(b => `<th class="num">${bedName(b)}</th>`).join('')}${S.combine === 'idw' ? '<th class="num">Weight</th>' : ''}</tr></thead><tbody>`;
     const perBed = Object.fromEntries(beds.map(b => [b, combine(refs, b)]));
     refs.forEach((o, i) => {
       h += `<tr><td class="wrap"><button class="link" data-goto="${esc(o.r.id)}">${esc(o.r.name)}</button><div class="subnote">${esc(o.r.p.city)}${o.r.prelim ? ' · prelim' : ''}${modeFor(o.r) === 'age' ? ' · moved with SAFMR' : ''}</div></td>
-        <td class="num">${mi(o.d)}</td><td>${esc(o.r.date)}</td><td>${esc(o.r.signer || '–')}</td>` +
+        <td class="num">${mi(o.d)}</td><td>${esc(o.r.date)}</td><td class="wrap">${esc(o.r.firm)}<div class="subnote">${esc(o.r.signer || '')}</div></td>` +
         beds.map(b => { const x = perBed[b].parts[i]; return `<td class="num">${pct(x.k)}${x.match ? '' : '<span class="est">*</span>'}</td>`; }).join('') +
         (S.combine === 'idw' ? `<td class="num">${pct(perBed[beds[0]].parts[i].share)}</td>` : '') + '</tr>';
     });
@@ -486,7 +495,7 @@ function start(D) {
     return h;
   }
   function renderDetail(p) {
-    const row = OUT.find(r => r.p === p), r = p.rcs;
+    const row = OUT.find(r => r.p === p);
     const okc = p.cons.map(conOk);
     let h = `<h2>${esc(p.name)}</h2><div class="muted">${esc(p.addr)}, ${esc(p.city)}, CA ${esc(p.zip)} · ${esc(p.county)} County</div>
       <p class="tiny"><a href="../#sel=${esc(p.id)}" target="_blank" rel="noopener">Open on the national map</a></p>
@@ -506,24 +515,27 @@ function start(D) {
         <td class="num ${sgn(e.gap)}">${money(e.gap)}</td><td>${esc(c.no)}</td></tr>`;
     }
     h += `</tbody></table></div><p class="note">Est. market = market % × SAFMR − UA (contract-rent basis). Gap = est. market − contract rent.${p.lines.some(ln => !okc[ln.c]) ? ' Grey rows are on contracts the filters leave out.' : ''}</p>`;
-    if (r) {
-      h += `<h3>This property's rent study <span class="muted">· ${r.history.length} on file</span></h3>
+    const own = ownStudy(p);
+    for (const r of p.studies || []) {
+      const tag = r === own ? ' <span class="b rcs">used</span>' : !studyOk(r) ? ' <span class="muted">· left out by the filters</span>' : '';
+      h += `<h3>${p.studies.length > 1 ? `${esc(r.firm)} rent study` : `This property's rent study · ${esc(r.firm)}`}${tag}</h3>
         <dl class="kv"><dt>Last done</dt><dd>${esc(r.date)}${r.prelim ? ' <span class="b pre">prelim</span>' : ''}</dd><dt>Signed by</dt><dd>${esc(r.signer || '–')}</dd>
         <dt>Client</dt><dd>${esc(r.client || '–')}</dd><dt>Source</dt><dd>${esc(r.kind)}<br><span class="subnote">${esc(r.file)}</span></dd>
         <dt>SAFMR compared</dt><dd>${esc(r.vintage)}, ZIP ${esc(r.zip)}</dd><dt>Median % of SAFMR</dt><dd><b>${pct(r.ratio)}</b> then · ${pct(r.ratio27)} of FY2027</dd>
-        <dt>Used by</dt><dd>${int(REACH[r.id] || 0)} properties in the current screen (within ${S.radius} mi)</dd></dl>`;
+        <dt>Used by</dt><dd>${int(REACH[r.sid] || 0)} properties in the current screen (within ${S.radius} mi)</dd></dl>`;
       if (r.note) h += `<p class="note">${esc(r.note)}</p>`;
       h += `<div class="scrollx"><table class="dt"><thead><tr><th>Unit</th><th class="num">SF</th><th class="num">Units</th><th class="num">Contract then</th><th class="num">As is</th><th class="num">Renovated</th><th class="num">UA</th><th class="num">Gross</th><th class="num">SAFMR then</th><th class="num">%</th><th class="num">% FY27</th></tr></thead><tbody>`;
       for (const x of r.asis) h += `<tr><td>${esc(x.unit)}</td><td class="num">${int(x.sf)}</td><td class="num">${int(x.units)}</td><td class="num">${money(x.contract)}</td><td class="num"><b>${money(x.rcs)}</b></td>
         <td class="num">${money(x.renRow && x.renRow.rcs)}</td><td class="num">${money(x.ua)}${x.uaSrc && x.uaSrc !== 'study' ? ' <span class="est">HUD</span>' : ''}</td><td class="num">${money(x.gross)}</td>
         <td class="num">${money(x.safmr)}</td><td class="num"><b>${pct(x.pct)}</b></td><td class="num">${pct(x.pct27)}</td></tr>`;
       h += `</tbody></table></div>`;
-      if (r.history.length > 1) {
-        h += `<h3>Study history</h3><table class="dt"><thead><tr><th>Date</th><th>Signed by</th><th>Source</th><th>As-is rents</th><th>Renovated</th></tr></thead><tbody>`;
-        for (const s of [...r.history].reverse()) h += `<tr><td>${esc(s.date)}${s.prelim ? ' <span class="b pre">prelim</span>' : ''}</td><td>${esc(s.signer || '–')}</td><td class="wrap">${esc(s.kind)}</td>
-          <td class="wrap">${s.asis.map(([u, v]) => `${esc(u)} ${money(v)}`).join('<br>')}</td><td class="wrap">${s.ren.map(([u, v]) => `${esc(u)} ${money(v)}`).join('<br>') || '–'}</td></tr>`;
-        h += `</tbody></table>`;
-      }
+    }
+    const hist = p.rcs ? p.rcs.history : [];
+    if (hist.length > 1) {
+      h += `<h3>Study history <span class="muted">· ${hist.length} on file</span></h3><div class="scrollx"><table class="dt"><thead><tr><th>Date</th><th>Firm</th><th>Signed by</th><th>Source</th><th>As-is rents</th><th>Renovated</th></tr></thead><tbody>`;
+      for (const s of [...hist].reverse()) h += `<tr><td>${esc(s.date)}${s.prelim ? ' <span class="b pre">prelim</span>' : ''}</td><td>${esc(s.firm)}</td><td>${esc(s.signer || '–')}</td><td class="wrap">${esc(s.kind)}</td>
+        <td class="wrap">${s.asis.map(([u, v]) => `${esc(u)} ${money(v)}`).join('<br>')}</td><td class="wrap">${s.ren.map(([u, v]) => `${esc(u)} ${money(v)}`).join('<br>') || '–'}</td></tr>`;
+      h += `</tbody></table></div>`;
     }
     h += `<h3>Contracts</h3>`;
     for (const [i, c] of p.cons.entries()) {
@@ -549,6 +561,7 @@ function start(D) {
   const calSel = $('#cal');
   for (const k in CAL) calSel.insertAdjacentHTML('beforeend', `<option value="${esc(k)}">${esc(CAL[k][0])} (${RCS.filter(CAL[k][1]).length})</option>`);
   $('#f-doc').innerHTML = DOCS.filter(d => docCount[d]).map(d => `<label class="chk"><input type="checkbox" data-doc="${d}"> ${d === '—' ? 'No contract type on file' : d}<span class="n">${docCount[d]}</span></label>`).join('');
+  $('#f-firm').innerHTML = FIRMS.map(f => `<label class="chk"><input type="checkbox" data-firm="${esc(f)}"> ${esc(f)}<span class="n">${firmN[f]}</span></label>`).join('');
   $('#f-ropt').innerHTML = ROPTS.map(r => `<label class="chk"><input type="checkbox" data-ropt="${esc(r)}"> <span><b>${esc(r)}</b> ${esc(ropLabel[r])}</span><span class="n">${ropCount[r]}</span></label>`).join('');
   function syncControls() {
     $('#q').value = S.q; county.value = S.county; $('#radius').value = S.radius; $('#combine').value = S.combine; calSel.value = S.cal;
@@ -558,6 +571,7 @@ function start(D) {
     $('#rcsOnly').checked = S.rcsOnly; $('#showNoEst').checked = S.showNoEst;
     $$('[data-doc]').forEach(i => { i.checked = S.docs.has(i.dataset.doc); });
     $$('[data-ropt]').forEach(i => { i.checked = S.ropts.has(i.dataset.ropt); });
+    $$('[data-firm]').forEach(i => { i.checked = S.firms.has(i.dataset.firm); });
   }
   function renderCal() {
     const c = CALNOW;
@@ -569,9 +583,10 @@ function start(D) {
       yr.map(y => `<tr><td>${y}</td><td class="num">${c.byYear[y].length}</td><td class="num">${pct(median(c.byYear[y]))}</td><td class="num">${pct(quant(c.byYear[y], 0.25))}–${pct(quant(c.byYear[y], 0.75))}</td></tr>`).join('') +
       `</tbody></table><table class="mini"><thead><tr><th>Bedrooms</th><th class="num">Properties</th><th class="num">Median</th></tr></thead><tbody>` +
       bd.map(b => `<tr><td>${bedName(+b)}</td><td class="num">${c.byBed[b].length}</td><td class="num">${pct(median(c.byBed[b]))}</td></tr>`).join('') +
-      `</tbody></table><p class="hint">One vote per property: the median of its as-is unit types, vs the SAFMR on the study date.</p>`;
+      `</tbody></table><p class="hint">One vote per study (each firm's latest at a property): the median of its as-is unit types, vs the SAFMR on the study date.</p>`;
     $('#f-doc-n').textContent = `${S.docs.size} of ${DOCS.filter(d => docCount[d]).length}`;
     $('#f-ropt-n').textContent = `${S.ropts.size} of ${ROPTS.length}`;
+    $('#f-firm-n').textContent = S.firms.size === FIRMS.length ? `all ${FIRMS.length}` : `${S.firms.size} of ${FIRMS.length}`;
   }
   function refresh() { S.limit = 300; build(); renderCal(); renderTable(); drawMarkers(); if (S.sel && !$('#detail').hidden) renderDetail(pById.get(S.sel)); }
   let qT;
@@ -587,6 +602,9 @@ function start(D) {
   bind('#minUnits', 'minUnits'); bind('#minGap', 'minGap'); bind('#minAnnual', 'minAnnual'); bind('#rcsOnly', 'rcsOnly'); bind('#showNoEst', 'showNoEst');
   $('#f-doc').addEventListener('change', e => { const d = e.target.dataset.doc; e.target.checked ? S.docs.add(d) : S.docs.delete(d); refresh(); });
   $('#f-ropt').addEventListener('change', e => { const r = e.target.dataset.ropt; e.target.checked ? S.ropts.add(r) : S.ropts.delete(r); refresh(); });
+  $('#f-firm').addEventListener('change', e => { const f = e.target.dataset.firm; e.target.checked ? S.firms.add(f) : S.firms.delete(f); refresh(); });
+  $('[data-all="firm"]').addEventListener('click', () => { S.firms = new Set(FIRMS); syncControls(); refresh(); });
+  $('[data-none="firm"]').addEventListener('click', () => { S.firms = new Set(); syncControls(); refresh(); });
   $('[data-all="ropt"]').addEventListener('click', () => { S.ropts = new Set(ROPTS); syncControls(); refresh(); });
   $('[data-none="ropt"]').addEventListener('click', () => { S.ropts = new Set(); syncControls(); refresh(); });
   $('#resetAll').addEventListener('click', () => { Object.assign(S, DEF()); syncControls(); refresh(); });
@@ -604,19 +622,21 @@ function start(D) {
   });
 
   /* ---------- about ---------- */
-  const reports = RCS.filter(r => r.kind.startsWith('RCS')).length;
-  $('#asof').textContent = `HUD contract rents as of ${M.hud.asof} · FY2027 SAFMRs · ${RCS.length} properties with rent studies (${M.studies} studies)`;
+  const reports = RCS.filter(r => !r.kind.startsWith('Grid workbook')).length, nProps = new Set(RCS.map(r => r.id)).size;
+  $('#asof').textContent = `HUD contract rents as of ${M.hud.asof} · FY2027 SAFMRs · ${nProps} properties with rent studies from ${FIRMS.length} firms (${M.studies} studies on file)`;
   const vint = M.safmr_vintages.map(v => `${esc(v.label)} (from ${esc(v.eff)})`).join(', ');
   $('#aboutBody').innerHTML = `<h2>How this screen works</h2>
     <h3>1. What each rent study concluded, as a % of SAFMR</h3>
-    <p>${RCS.length} California properties have rent comparability studies in the Rent Grid Library (${esc(M.library)}): ${reports} with a PDF report, ${RCS.length - reports} with only the grid workbook (dated by last save).
+    <p>${nProps} California properties have rent comparability studies in the Rent Grid Library (${esc(M.library)}), from ${FIRMS.length} appraisal firms: ${FIRMS.map(f => `${esc(f)} ${firmN[f]}`).join(', ')}.
+      The screen uses each firm's latest study at each property (${RCS.length} studies: ${reports} PDF reports, ${RCS.length - reports} grid workbooks dated by last save). Every firm's study counts the same; untick firms under "Appraisal firms" to leave them out.
       For each study's as-is conclusion, gross rent = the concluded contract rent + the study's utility allowance. That is divided by the HUD Small Area FMR for the study's ZIP and bedroom count <i>in effect on the study date</i>,
       including mid-year revisions: ${vint}. Where a grid has no utility allowance, the current HUD allowance is used and marked "HUD".</p>
     <h3>2. Nearby studies set each property's market %</h3>
     <ul><li>For each HUD property, the studies within the radius (default 5 miles, straight-line) are used. With "Match the bedroom count" on, a study contributes its own % for that unit size when it has one, otherwise its median.</li>
       <li>"Average, closer ones count more" weights each study by 1 ÷ distance (distances under a quarter mile count as a quarter mile). "Median" and "Nearest study only" are the alternatives.</li>
       <li>"Bring studies to today": a study under 12 months old is used as concluded (its gross rent ÷ today's SAFMR at its ZIP). An older study keeps its % of the SAFMR on its study date, which moves the conclusion with SAFMR growth since then. Either rule can be applied to all studies.</li>
-      <li>A property with its own study uses that study first. Unit types it did not cover use its median.</li>
+      <li>A property with its own study uses that study first (its latest that passes the filters). Unit types it did not cover use its median.</li>
+      <li>Where a study gives no utility allowance, the property's current HUD allowance for that bedroom count is added to get gross rent (marked "HUD"). Where it states its conclusions already include all utilities, the conclusion is the gross rent.</li>
       <li>With no study in range, the property gets no estimate unless you choose the statewide % (the slider; it starts at the median of all studies, ${pct(M.calibration.median)}).</li></ul>
     <h3>3. The screen</h3>
     <ul><li>Estimated market gross = market % × the FY2027 SAFMR (effective ${esc(M.safmr_vintages[M.safmr_vintages.length - 1].eff)}) for the property's ZIP and bedroom count.</li>

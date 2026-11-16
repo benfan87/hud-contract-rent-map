@@ -45,6 +45,10 @@
       <div class="row gap mt"><label class="lbl inline" for="combine">Combine them</label>
         <select id="combine"><option value="idw">Average, closer ones count more</option><option value="median">Median</option><option value="nearest">Nearest study only</option></select></div>
       <div class="row gap mt"><label class="lbl inline" for="cal">Use</label><select id="cal"></select></div>
+      <details class="mt"><summary>Appraisal firms <span class="cnt" id="f-firm-n"></span></summary>
+        <div class="row gap tiny"><button class="link" data-all="firm">All</button><button class="link" data-none="firm">None</button></div>
+        <div id="f-firm" class="checks"></div>
+        <p class="hint">Every firm's study counts the same. A property studied by two firms adds one study from each.</p></details>
       <label class="chk mt"><input type="checkbox" id="bedMatch"> Match the bedroom count when a study has it</label>
       <label class="chk"><input type="checkbox" id="useOwn"> A property's own study comes first</label>
       <label class="lbl mt" for="rcsMode">Bring studies to today</label>
