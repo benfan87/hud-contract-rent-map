@@ -34,6 +34,9 @@ are not market rents or rent comparability study conclusions. Verify before rely
    `python tools/merge_zones.py property_qct_dda_2027.json --year 2027`.
 6. `python tools/merge_owners.py <folder>`: owner entity, management agent and their HUD contacts from the MF Assistance &
    Section 8 property file, plus owner groups (likely sponsor: shared organization email domain, else mailing address).
+7. `python tools/build_lihtc_all.py hud_lihtc.json az_lihtc.json matches.json`: the full version's data file
+   (`assets/lihtc_all.js`). Every LIHTC record not matched to a HUD property (high/medium tier), grouped into projects by
+   address and name, tagged with the 2027 QCT/DDA. Open the site with `?all` (or `all.html`) to load it.
 
 LIHTC records have no HUD property ID, so they are matched by address, location and name, with a confidence label.
 Treat the target screen as a shortlist to verify, not a conclusion.

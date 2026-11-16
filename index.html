@@ -11,6 +11,7 @@
 <header class="top">
   <div class="brand">HUD Contract Rent Map</div>
   <div class="asof" id="asof"></div>
+  <a class="link" id="modeLink" href="?all"></a>
   <button class="link" id="aboutBtn">About the data</button>
 </header>
 
@@ -40,6 +41,10 @@
 
     <section class="block" id="filtersBlock">
       <div class="block-head"><span>Filters</span><button class="link" id="resetFilters">Reset</button></div>
+      <details open id="progBlock" hidden><summary>Record type</summary>
+        <select id="prog" aria-label="Record type"></select>
+        <p class="hint">HUD = in HUD's Section 8 / multifamily files (contracts, rents, owners). LIHTC only = in HUD's LIHTC database or a state award list but not in HUD's files.</p>
+      </details>
       <details open><summary>Location, size &amp; owner <span class="cnt" id="f-st-n"></span></summary>
         <div class="row gap mt"><label class="lbl inline">Total units</label>
           <input id="unitsMin" type="number" min="0" placeholder="min"><span>to</span><input id="unitsMax" type="number" min="0" placeholder="max">
@@ -167,7 +172,16 @@
 <div id="loading" class="loading"><div>Loading HUD data…<small>About 30 MB of HUD contract data loads into your browser. The first visit can take 10–20 seconds; after that it's cached.</small></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="assets/hud_data.js"></script>
-<script src="assets/app.js"></script>
+<script>
+/* ?all loads the full version: HUD data plus every LIHTC project (assets/lihtc_all.js). Scripts load in order. */
+(function () {
+  var all = /[?&]all(=|&|$)/.test(location.search), q = ['assets/hud_data.js'].concat(all ? ['assets/lihtc_all.js'] : [], ['assets/app.js']);
+  if (all) document.querySelector('#loading div').firstChild.textContent = 'Loading HUD and LIHTC data…';
+  (function next() {
+    if (!q.length) return;
+    var s = document.createElement('script'); s.src = q.shift(); s.onload = s.onerror = next; document.body.appendChild(s);
+  })();
+})();
+</script>
 </body>
 </html>

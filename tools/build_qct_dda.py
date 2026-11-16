@@ -153,17 +153,8 @@ def dumps(o):
     return json.dumps(o, separators=(",", ":"), ensure_ascii=False)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("year", nargs="?", default="2027")
-    ap.add_argument("--geo-dir", default=os.path.join(os.path.dirname(ROOT), "hud_src", "geo"))
-    ap.add_argument("--no-dissolve", action="store_true", help="keep one polygon per tract/ZCTA (much larger)")
-    ap.add_argument("--target-mb", type=float, default=4.0)
-    a = ap.parse_args()
-    Y, G = a.year, a.geo_dir
-    os.makedirs(G, exist_ok=True)
-    today = datetime.date.today().isoformat()
-
+def load_inputs(Y, G):
+    """Download (if needed) and read the HUD QCT/DDA lists and the Census boundaries."""
     srcs = {
         "qct_csv": (HUD + f"QCT{Y}CSV.zip", f"QCT{Y}CSV.zip"),
         "dda_xlsx": (HUD + f"{Y}-DDAs-Data-Used-to-Designate.xlsx", f"{Y}-DDAs-Data-Used-to-Designate.xlsx"),
@@ -225,13 +216,13 @@ def main():
     zmiss = [z_ for z_ in zc if z_ not in zctas]
     cmiss = [c for c in nmc if c not in counties]
     print("SDDA ZCTAs missing geometry:", len(zmiss), zmiss[:5], " NM counties missing:", len(cmiss), cmiss[:5])
+    return dict(srcs=srcs, qct_ids=qct_ids, zc=zc, nmc=nmc, n_nm_areas=n_nm_areas, tracts=tracts, zctas=zctas,
+                counties=counties)
 
-    # --- property tagging ---
-    hp = os.path.join(ROOT, "assets", "hud_data.js")
-    s = open(hp, encoding="utf8").read()
-    props = json.loads(s[s.index("=") + 1:].rstrip().rstrip(";"))["P"]
-    del s
-    rows = [(r[0], r[8], r[9], r[10]) for r in props if r[8] is not None and r[9] is not None]
+
+def tag_points(rows, Z):
+    """rows: [(id, lat, lon, location code)]. Returns ({id: [in_qct, in_dda, tract GEOID]}, stats)."""
+    tracts, zctas, qct_ids, zc, nmc = Z["tracts"], Z["zctas"], Z["qct_ids"], Z["zc"], Z["nmc"]
     pts = shapely.points(np.array([[r[2], r[1]] for r in rows]))
     tkeys = list(tracts)
     ttree = STRtree([tracts[k] for k in tkeys])
@@ -270,6 +261,34 @@ def main():
         n_q += iq; n_d += idd; n_any += (iq or idd)
         if loc == "C":
             ap_all += 1; ap_q += iq; ap_d += idd; ap_any += (iq or idd)
+    return out, dict(rows=len(rows), notract=notract, nearest_used=nearest_used, zfallback=zfallback, n_q=n_q, n_d=n_d,
+                     n_any=n_any, ap_q=ap_q, ap_d=ap_d, ap_any=ap_any, ap_all=ap_all)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("year", nargs="?", default="2027")
+    ap.add_argument("--geo-dir", default=os.path.join(os.path.dirname(ROOT), "hud_src", "geo"))
+    ap.add_argument("--no-dissolve", action="store_true", help="keep one polygon per tract/ZCTA (much larger)")
+    ap.add_argument("--target-mb", type=float, default=4.0)
+    a = ap.parse_args()
+    Y, G = a.year, a.geo_dir
+    os.makedirs(G, exist_ok=True)
+    today = datetime.date.today().isoformat()
+
+    Z = load_inputs(Y, G)
+    srcs, qct_ids, zc, nmc, n_nm_areas = Z["srcs"], Z["qct_ids"], Z["zc"], Z["nmc"], Z["n_nm_areas"]
+    tracts, zctas, counties = Z["tracts"], Z["zctas"], Z["counties"]
+
+    # --- property tagging ---
+    hp = os.path.join(ROOT, "assets", "hud_data.js")
+    s = open(hp, encoding="utf8").read()
+    props = json.loads(s[s.index("=") + 1:].rstrip().rstrip(";"))["P"]
+    del s
+    rows = [(r[0], r[8], r[9], r[10]) for r in props if r[8] is not None and r[9] is not None]
+    out, st = tag_points(rows, Z)
+    notract, nearest_used, zfallback = st["notract"], st["nearest_used"], st["zfallback"]
+    n_q, n_d, n_any, ap_q, ap_d, ap_any, ap_all = (st[k] for k in ("n_q", "n_d", "n_any", "ap_q", "ap_d", "ap_any", "ap_all"))
     json.dump(out, open(os.path.join(G, f"property_qct_dda_{Y}.json"), "w"), separators=(",", ":"))
     print(f"properties with coords {len(rows)}; no tract {notract} (nearest-fallback used {nearest_used}, zcta fallback {zfallback})")
     print(f"in QCT {n_q} (approx {ap_q}); in DDA {n_d} (approx {ap_d}); either {n_any} (approx {ap_any}); all approx-located {ap_all}")

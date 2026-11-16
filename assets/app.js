@@ -3,6 +3,33 @@
 (() => {
 'use strict';
 const H = window.HUD_DATA, D = H.dict;
+// Full version (?all): every LIHTC project not already attached to a HUD property (tools/build_lihtc_all.py,
+// assets/lihtc_all.js). Its rows are appended after the HUD property records, so HUD indexes don't move.
+const X = window.LIHTC_ALL || null, FULL = !!X, NB = H.P.length;
+const LFLAG = X ? X.meta.flag_bits : {};
+if (X) {
+  D.locnote = D.locnote || []; D.lsrc = D.lsrc || []; D.lsrcUrl = D.lsrcUrl || [];
+  const ln = t => { const i = D.locnote.indexOf(t); return i >= 0 ? i : D.locnote.push(t) - 1; };
+  const LN = { L: ln('HUD LIHTC database geocode'), C: ln('LIHTC record has no coordinates; placed at Census ZIP (ZCTA) centroid'), N: ln('LIHTC record has no coordinates or ZIP') };
+  const srcMap = X.lsrc.map(([t, u]) => { let i = D.lsrc.indexOf(t); if (i < 0) { i = D.lsrc.push(t) - 1; D.lsrcUrl.push(u); } return i; });
+  const li0 = (H.LI = H.LI || []).length;
+  H.PL = H.PL || []; H.Z = H.Z || [];
+  let li = 0;
+  X.P.forEach((q, j) => {
+    // id, name, addr, city, st, zip, lat, lon, loc, units, nRecords, lastAlloc, lastPis, y15, y15est, resynd, firstYear
+    H.P.push([q[0], q[1], q[2], q[3], q[4], q[5], null, null, q[6], q[7], q[8] || '', LN[q[8] || 'N'], q[9], null, -1, null, null, -1, -1, null]);
+    const links = [];
+    for (let k = 0; k < q[10]; k++, li++) {
+      const r = X.LI[li];
+      H.LI.push([r[0] ?? q[1], r[1] ?? q[2], r[2] ?? q[3], r[3] ?? q[4], r[4] ?? q[5], r[5], r[6] ?? r[5], r[7], r[8],
+        r[9] == null ? null : X.cr[r[9]], r[10], r[11] == null ? null : X.ty[r[11]], r[12], r[13], srcMap[r[14]], r[15]]);
+      links.push([li0 + li, 0, 'LIHTC-only project: no HUD Section 8 / multifamily property match']);
+    }
+    H.PL.push([NB + j, links, 0, q[11], q[12], q[13], q[14], q[15], q[16]]);
+  });
+  const zq = new Set(X.zq), zd = new Set(X.zd);
+  X.P.forEach((q, j) => { if (q[6] != null) H.Z.push([NB + j, zq.has(j) ? 1 : 0, zd.has(j) ? 1 : 0]); });
+}
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = v => v == null ? '' : '$' + Math.round(v).toLocaleString();
@@ -17,7 +44,7 @@ const props = H.P.map((p, i) => ({
   propcat: dict('propcat', p[14]), owner: p[15], mgmt: p[16], office: dict('office', p[17]), fha: dict('fha', p[18]),
   cons: [], dist: null,
 }));
-for (const p of props) p.lc = !p.loc ? 'N' : p.loc === 'C' ? 'C' : (p.loc === 'R' || p.loc === '4') ? 'P' : 'A';
+for (const p of props) p.lc = !p.loc ? 'N' : p.loc === 'C' ? 'C' : (p.loc === 'R' || p.loc === '4' || p.loc === 'L') ? 'P' : 'A';
 // Financing, LIHTC and 2027 QCT/DDA (tools/merge_fha.py, tools/merge_lihtc.py, tools/build_qct_dda.py)
 for (const p of props) { p.loans = []; p.ownSince = H.P[p.i][19] || null; p.ownYear = p.ownSince ? +p.ownSince.slice(0, 4) : null; p.lih = null; p.qct = null; p.dda = null; }
 for (const f of (H.F || [])) props[f[0]].loans.push({ fha: f[1], soa: f[2], soaCode: f[3], primary: f[4], insured: f[5], initEnd: f[6], finalEnd: f[7],
@@ -28,6 +55,19 @@ const LIREC = (H.LI || []).map(r => ({ project: r[0], addr: r[1], city: r[2], st
 for (const r of (H.PL || [])) props[r[0]].lih = { links: r[1].map(([i, t, why]) => ({ rec: LIREC[i], tier: t, why })), best: r[2],
   lastAlloc: r[3], lastPis: r[4], y15: r[5], y15est: !!r[6], resynd: r[7], first: r[8] };
 for (const z of (H.Z || [])) { props[z[0]].qct = !!z[1]; props[z[0]].dda = !!z[2]; }
+// LIHTC-only projects (full version): program flags from HUD's LIHTC database, possible HUD duplicates
+for (const p of props) { p.lihOnly = p.i >= NB; p.lflags = 0; p.dupOf = null; p.dupWhy = null; }
+if (X) {
+  X.F.forEach((v, j) => { props[NB + j].lflags = v; });
+  for (const [j, pid, why] of X.dup) { props[NB + j].dupOf = pid; props[NB + j].dupWhy = why; }
+}
+const lihCompany = p => (p.lih ? p.lih.links.map(l => l.rec.company).filter(Boolean).pop() : '') || '';
+const lihUnits = p => p.lih && p.lih.best < 2 ? Math.max(0, ...p.lih.links.filter(l => l.tier < 2).map(l => l.rec.liUnits || 0)) || null : null;
+const LFLAG_LABEL = { nonprofit: 'Nonprofit sponsor', rd515: 'USDA RD 515 loan', home: 'HOME funds', fha: 'FHA-insured loan',
+  hudmf: 'HUD multifamily financing / rental assistance', ra_fed: 'Federal rental assistance', ra_state: 'State rental assistance',
+  bond: 'Tax-exempt bond financing', nonprog: 'No longer monitored for LIHTC (HUD "NONPROG")' };
+const lflagText = p => Object.entries(LFLAG).filter(([, b]) => p.lflags & b).map(([k]) => LFLAG_LABEL[k] || k).join('; ');
+const recType = p => p.lihOnly ? 'LIHTC only' : hasLih(p) ? 'HUD + LIHTC' : 'HUD';
 // Owner / management-agent contacts and sponsor groups (tools/merge_owners.py)
 const SP = D.spon || [], SP_N = new Map();
 const rec9 = r => r && { pid: r[0], name: r[1], type: r[2], addr: r[3], city: r[4], st: r[5], zip: r[6], phone: r[7], email: r[8] };
@@ -74,7 +114,7 @@ const cons = H.C.map((c, i) => ({
 const OLD_STATUS = 'Not in HUD active list';
 for (const c of cons) c.old = c.status < 0 && c.program < 0 && c.doc < 0 && !c.eff;
 for (const c of cons) props[c.p].cons.push(c);
-const BASIS_ORDER = { V: 0, R: 1, E: 2, U: 3 };
+const BASIS_ORDER = { V: 0, R: 1, E: 2, U: 3, N: 7, T: 8 };
 const lines = H.L.map((l, i) => ({
   i, c: l[0], bed: l[1], units: l[2], rent: l[3], ua: l[4], gross: l[5], basis: l[6], source: dict('source', l[7]),
   fmrRent: l[8], fmrAssist: l[9], q: l[10], flag: dict('flag', l[11]), bedUnits: l[12], bedSrc: l[13], fmr2: l[14],
@@ -91,11 +131,11 @@ const DOC_LABEL = {
   PAC: 'PAC: Project Assistance Contract', RAC: 'RAC: 811 PRA Rental Assistance Contract', COOP: 'COOP: 811 PRA Cooperative Agreement',
 };
 const BASIS_LABEL = { V: 'Verified document', R: 'Reported (HUD rent file)', E: 'Estimated gross (FMR × HUD ratio)', U: 'Unavailable' };
-const BASIS_SHORT = { V: 'Verified', R: 'Reported', E: 'Estimate', U: 'Unavailable', N: 'No rent data' };
+const BASIS_SHORT = { V: 'Verified', R: 'Reported', E: 'Estimate', U: 'Unavailable', N: 'No rent data', T: 'LIHTC only' };
 const LOC_CLASS = { P: 'Precise HUD geocode (rooftop / ZIP+4)', A: 'Approximate HUD geocode (block group / tract / ZIP)', C: 'ZIP centroid: not located by HUD GIS', N: 'No location' };
 const BED_LABEL = b => b === 0 ? 'Studio' : b >= 5 ? '5+ BR' : `${b} BR`;
 const bedKey = b => Math.min(b, 5);
-const COLORS = { V: '#1a7f37', R: '#2563eb', E: '#c26a00', U: '#8b8f98', N: '#8b8f98' };
+const COLORS = { V: '#1a7f37', R: '#2563eb', E: '#c26a00', U: '#8b8f98', N: '#8b8f98', T: '#db2777' };
 const label = {
   doc: i => i < 0 ? 'Unknown (no assistance-file match)' : (DOC_LABEL[D.doc[i]] || D.doc[i]),
   program: i => i < 0 ? 'Unknown (no assistance-file match)' : D.program[i],
@@ -120,8 +160,9 @@ const defaults = () => ({
   bed: new Set([0, 1, 2, 3, 4, 5]), basis: new Set(['V', 'R', 'E', 'U']), loc: new Set(['P', 'A', 'C']), propOnly: false, oldCons: false,
   st: allOf('st'), city: new Set(), spon: new Set(), unitsMin: null, unitsMax: null,
   soa: allOf('soa'), tcOnly: false, lih: 'any', lihPossible: false, y15Min: null, y15Max: null, allocBefore: null, zone: 'any',
+  prog: 'all',  // full version: HUD / LIHTC record type
 });
-const state = { f: defaults(), center: null, radius: 3, view: 'lines', sort: null, selected: null, pinMode: false, result: null };
+const state = { f: defaults(), center: null, radius: 3, view: FULL ? 'props' : 'lines', sort: null, selected: null, pinMode: false, result: null };
 const PSEUDO = { doc: -1, program: -1, status: -1, ropt: -1, effYear: null, ovYear: null, term: null };
 
 /* ---------- filtering ---------- */
@@ -142,8 +183,22 @@ function contractOK(c) {
   return (f.yearMin == null || c.effYear >= f.yearMin) && (f.yearMax == null || c.effYear <= f.yearMax);
 }
 const hasLih = (p, poss = state.f.lihPossible) => !!p.lih && p.lih.best <= (poss ? 2 : 1);
+const PROG_LABEL = { all: 'All properties', hud: 'In HUD files (Section 8 / multifamily)', lih: 'Any LIHTC', both: 'HUD and LIHTC',
+  hudNoLih: 'HUD, no LIHTC match', lihOnly: 'LIHTC only (not in HUD files)' };
+function progOK(p, prog) {
+  if (prog === 'all') return true;
+  const hud = !p.lihOnly, li = hasLih(p);
+  return prog === 'hud' ? hud : prog === 'lih' ? li : prog === 'both' ? hud && li : prog === 'hudNoLih' ? hud && !li : !hud;
+}
+// Contract and rent filters only apply to HUD contracts; LIHTC-only projects are left out while any is set.
+function contractFiltered() {
+  const f = state.f;
+  return ['doc', 'program', 'status', 'ropt'].some(k => f[k].size !== COUNTS[k].size) || f.yearMin != null || f.yearMax != null
+    || !f.yearUnknown || !!f.minTerm || f.ovMin != null || f.ovMax != null || f.bed.size !== 6 || f.basis.size !== 4;
+}
 function propOK(p) {
   const f = state.f;
+  if (!progOK(p, f.prog)) return false;
   if (f.st.size !== STATE_N.size && !f.st.has(p.st || '')) return false;
   if (f.city.size && !f.city.has(p.ck)) return false;
   if (f.spon.size && !f.spon.has(p.spon)) return false;
@@ -180,14 +235,17 @@ function haversine(a, b, c, d) {
 
 function compute() {
   const f = state.f, ctr = state.center, lineDefault = f.bed.size === 6 && f.basis.size === 4;
-  const out = []; let unlocated = 0, hiddenPropOnly = 0, hiddenOld = 0, hiddenOldProps = 0;
+  const out = []; let unlocated = 0, hiddenPropOnly = 0, hiddenOld = 0, hiddenOldProps = 0, hiddenLih = 0;
+  const cf = FULL && contractFiltered();
   for (const p of props) {
     if (!propOK(p)) continue;
     const located = p.lc !== 'N';
     if (located && !f.loc.has(p.lc)) continue;
     if (ctr && located && p.dist > state.radius) continue;
     let mc = [];
-    if (!p.cons.length) {
+    if (p.lihOnly) {
+      if (cf) { if (!ctr || located) hiddenLih++; continue; }
+    } else if (!p.cons.length) {
       if (!lineDefault || !contractOK(PSEUDO)) continue;
       if (!f.propOnly) { if (!ctr || located) hiddenPropOnly++; continue; }
     } else {
@@ -203,9 +261,9 @@ function compute() {
       if (!mc.length) continue;
     }
     if (ctr && !located) { unlocated++; continue; }
-    out.push({ p, mc, best: bestBasis(mc) });
+    out.push({ p, mc, best: p.lihOnly ? 'T' : bestBasis(mc) });
   }
-  return { out, unlocated, hiddenPropOnly, hiddenOld, hiddenOldProps };
+  return { out, unlocated, hiddenPropOnly, hiddenOld, hiddenOldProps, hiddenLih };
 }
 function bestBasis(mc) {
   let b = 'N';
@@ -251,6 +309,7 @@ const legend = L.control({ position: 'bottomright' });
 legend.onAdd = () => {
   const el = L.DomUtil.create('div', 'legend');
   el.innerHTML = ['V', 'R', 'E', 'N'].map(k => `<div><i style="background:${COLORS[k]}"></i>${k === 'V' ? 'Verified rent document' : k === 'R' ? 'Reported HUD rent' : k === 'E' ? 'Estimated gross only' : 'No rent data'}</div>`).join('')
+    + (FULL ? `<div><i style="background:${COLORS.T}"></i>LIHTC only (not in HUD files)</div>` : '')
     + '<div><i class="hollow"></i>Approximate location</div>'
     + '<div><i style="background:#7c3aed;opacity:.5;border-radius:2px"></i>2027 QCT · <i style="background:#0d9488;opacity:.5;border-radius:2px"></i>2027 DDA <span class="muted">(layers menu)</span></div>';
   return el;
@@ -401,8 +460,8 @@ const PROP_COLS = [
   { k: 'name', h: 'Property', t: 'Click a row to open the property panel', v: r => r.p.name || null, f: (v, r) => esc(pname(r.p)) },
   { k: 'addr', h: 'Address', v: r => r.p.addr },
   { k: 'city', h: 'City', v: r => r.p.city ? `${r.p.city}, ${r.p.st}` : '' },
-  { k: 'ncon', h: 'Contracts', t: 'Contracts matching the current filters (of all contracts at the property)', n: 1, v: r => r.mc.length, f: (v, r) => v === r.p.cons.length ? v : `${v} of ${r.p.cons.length}` },
-  { k: 'prog', h: 'Programs', v: r => uniq(r.mc.map(m => programOf(m.c))).join(', ') },
+  { k: 'ncon', h: 'Contracts', t: 'Contracts matching the current filters (of all contracts at the property)', n: 1, v: r => r.p.lihOnly ? null : r.mc.length, f: (v, r) => r.p.lihOnly ? '<span class="muted">–</span>' : v === r.p.cons.length ? v : `${v} of ${r.p.cons.length}` },
+  { k: 'prog', h: 'Programs', v: r => r.p.lihOnly ? 'LIHTC' : uniq(r.mc.map(m => programOf(m.c))).join(', ') },
   { k: 'status', h: 'Status', v: r => uniq(r.mc.map(m => statusOf(m.c))).join(', ') },
   { k: 'total', h: 'Total units', n: 1, v: r => pSize(r.p), f: num },
   { k: 'assisted', h: 'Assisted units', n: 1, v: r => r.p.assisted, f: num },
@@ -415,11 +474,16 @@ const PROP_COLS = [
   { k: 'lih', h: 'LIHTC alloc. / PIS', t: 'Latest tax-credit allocation year / placed-in-service year', v: r => hasLih(r.p) ? (r.p.lih.lastAlloc ?? r.p.lih.lastPis) : null, f: (v, r) => lihHtml(r.p) },
   { k: 'y15', h: 'Year 15', t: 'Year the LIHTC compliance period ends (latest placed-in-service year + 14)', n: 1, v: r => hasLih(r.p) ? r.p.lih.y15 : null, f: (v, r) => y15Html(r.p) },
   { k: 'zone', h: '2027 QCT/DDA', t: 'Qualified census tract / difficult development area for 2027 (LIHTC basis boost)', v: r => zoneText(r.p) },
-  { k: 'owner', h: 'Owner', t: 'Owner entity in HUD\'s property file (usually a single-asset LLC or LP)', v: r => r.p.ow?.name || r.p.owner || '' },
+  { k: 'owner', h: 'Owner', t: 'Owner entity in HUD\'s property file (usually a single-asset LLC or LP); for LIHTC-only projects, the contact company in HUD\'s LIHTC database', v: r => r.p.ow?.name || r.p.owner || (r.p.lihOnly ? lihCompany(r.p) : ''), f: (v, r) => v && r.p.lihOnly ? `${esc(v)} <span class="muted">(LIHTC contact)</span>` : esc(v) },
   { k: 'own', h: 'Owned since', t: "HUD's ownership effective date: when the current owner entity took over", v: r => r.p.ownSince || '' },
   { k: 'spon', h: 'Owner group', t: 'Likely sponsor: owner entities sharing an email domain or mailing address', v: r => sponLabel(r.p.spon) },
-  { k: 'loc', h: 'Location', t: 'How precisely HUD locates the property on the map', v: r => r.p.lc, f: (v, r) => v === 'P' ? 'Precise' : v === 'A' ? '<span class="b out">Approx. (HUD)</span>' : v === 'C' ? '<span class="b out">ZIP centroid</span>' : '<span class="flag">None</span>' },
+  { k: 'loc', h: 'Location', t: 'How precisely HUD locates the property on the map', v: r => r.p.lc, f: (v, r) => v === 'P' ? (r.p.loc === 'L' ? 'LIHTC geocode' : 'Precise') : v === 'A' ? '<span class="b out">Approx. (HUD)</span>' : v === 'C' ? '<span class="b out">ZIP centroid</span>' : '<span class="flag">None</span>' },
 ];
+if (FULL) {
+  PROP_COLS.splice(2, 0, { k: 'rtype', h: 'Record', t: 'HUD = in HUD\'s Section 8 / multifamily files; LIHTC only = in HUD\'s LIHTC database or a state award list but not in HUD\'s files', v: r => recType(r.p), f: v => v === 'LIHTC only' ? `<span class="b T">${v}</span>` : esc(v) });
+  const at = PROP_COLS.findIndex(c => c.k === 'assisted') + 1;
+  PROP_COLS.splice(at, 0, { k: 'liu', h: 'LIHTC LI units', t: 'Low-income units in the LIHTC record(s)', n: 1, v: r => lihUnits(r.p), f: num });
+}
 const uniq = a => [...new Set(a)];
 const minOf = a => a.filter(Boolean).sort()[0] || '';
 const maxOf = a => a.filter(Boolean).sort().pop() || '';
@@ -509,6 +573,7 @@ function activeFilters() {
   if (f.y15Min != null || f.y15Max != null) add(`Year 15 ${f.y15Min ?? '…'}–${f.y15Max ?? '…'}`, () => { f.y15Min = f.y15Max = null; });
   if (f.allocBefore != null) add(`No LIHTC allocation since ${f.allocBefore}`, () => { f.allocBefore = null; });
   if (f.zone !== 'any') add({ qct: 'In a 2027 QCT', dda: 'In a 2027 DDA', either: 'In a 2027 QCT or DDA' }[f.zone], () => { f.zone = 'any'; });
+  if (f.prog !== 'all') A.unshift({ label: PROG_LABEL[f.prog], clear: () => { f.prog = 'all'; } });
   return A;
 }
 function renderActive() {
@@ -522,7 +587,7 @@ function renderActive() {
 /* ---------- refresh ---------- */
 function refresh() {
   state.result = compute();
-  const { out, unlocated, hiddenPropOnly, hiddenOld, hiddenOldProps } = state.result;
+  const { out, unlocated, hiddenPropOnly, hiddenOld, hiddenOldProps, hiddenLih } = state.result;
   drawMarkers(out);
   drawHilite();
   renderActive();
@@ -535,10 +600,13 @@ function refresh() {
   const inArea = [inSp, inCity, inSt].filter(Boolean).join(' · ') || null;
   const where = state.center ? ` within ${state.radius} mi of ${state.center.label}${inArea ? ` (${inArea} only)` : ''}` : inArea ? ` in ${inArea}` : ' nationwide';
   const pl = (n, one, many = one + 's') => `${n.toLocaleString()} ${n === 1 ? one : many}`;
-  let msg = `${pl(out.length, 'property', 'properties')} · ${pl(nLines, 'rent line')}${where}`;
+  const nLih = FULL ? out.reduce((a, r) => a + (r.p.lihOnly ? 1 : 0), 0) : 0;
+  let msg = `${pl(out.length, 'property', 'properties')}${nLih && nLih < out.length ? ` (${nLih.toLocaleString()} LIHTC only)` : ''} · ${pl(nLines, 'rent line')}${where}`;
+  if (nLih && state.view === 'lines') msg += ' · LIHTC-only projects have no HUD rents, so they are listed on the Properties tab';
   if (unlocated) msg += ` · ${unlocated.toLocaleString()} matching records have no map location, so no radius can include them (find them by name, ID or contract #)`;
   const notShown = [hiddenPropOnly && !state.f.propOnly && `${hiddenPropOnly.toLocaleString()} properties with no HUD contract`,
-    hiddenOld && `${hiddenOld.toLocaleString()} old contracts${hiddenOldProps ? ` (${hiddenOldProps.toLocaleString()} properties have only old ones)` : ''}`].filter(Boolean);
+    hiddenOld && `${hiddenOld.toLocaleString()} old contracts${hiddenOldProps ? ` (${hiddenOldProps.toLocaleString()} properties have only old ones)` : ''}`,
+    hiddenLih && `${hiddenLih.toLocaleString()} LIHTC-only projects (contract or rent filters apply to HUD contracts only)`].filter(Boolean);
   if (notShown.length) msg += ` · not shown: ${notShown.join(', ')}; see Filters`;
   $('#summary').textContent = msg;
   updateFilterCounts();
@@ -577,7 +645,8 @@ function renderDetail(p) {
   const loc = p.lc === 'N' ? `<span class="flag">No location: ${esc(p.locNote)}</span>`
     : `${esc(LOC_CLASS[p.lc])}${p.lc !== 'P' ? ` <span class="muted">(${esc(p.locNote)})</span>` : ''}`;
   let h = `<h2>${esc(pname(p))}</h2>
-    <div class="muted">${esc([p.addr, p.city, [p.st, p.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') || 'Address not in HUD property files')} · HUD property ID ${esc(p.id)}</div>`;
+    <div class="muted">${esc([p.addr, p.city, [p.st, p.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') || (p.lihOnly ? 'No address in the LIHTC record' : 'Address not in HUD property files'))} · ${p.lihOnly ? 'LIHTC project ID' : 'HUD property ID'} ${esc(p.id)}</div>`;
+  if (p.lihOnly) return renderLihOnly(p, h, p.lc === 'P' ? 'HUD LIHTC database geocode' : p.lc === 'C' ? 'ZIP centroid (approximate): the LIHTC record has no coordinates' : `<span class="flag">No location: ${esc(p.locNote)}</span>`);
   h += kv([
     state.center && p.dist != null && ['Distance from center', `${p.dist.toFixed(2)} mi`],
     ['Location', loc],
@@ -594,6 +663,29 @@ function renderDetail(p) {
   if (!p.cons.length) h += '<p class="note">No assistance contract in the HUD source files for this property ID. That does not prove the property has no assistance.</p>';
   for (const c of p.cons) h += contractCard(c, matched.has(c));
   h += `<p class="note">Rents are monthly per unit. Reported amounts come from HUD's contract rent / utility allowance file${H.meta.rent_file ? ` (as of ${esc(H.meta.rent_file.asof)})` : ''}. A bedroom size can have several rent rows (rent tiers); each is shown with its own unit count. Estimates = assistance-file bedroom FMR × HUD contract gross-rent/FMR %, the same % for every bedroom size, so they are gross rents only. Contract rent is not estimated when the utility allowance is unknown. The HUD files do not publish a last-approved RCS date or market-reset date.</p>`;
+  $('#detailBody').innerHTML = h;
+  $('#detail').hidden = false;
+  $('.detail-scroll').scrollTop = 0;
+}
+function renderLihOnly(p, h, loc) {
+  const dup = p.dupOf && byId.get(p.dupOf), co = lihCompany(p), fl = lflagText(p);
+  h += `<p class="note"><span class="b T">LIHTC only</span> In HUD's LIHTC database${p.lih.links.some(l => !l.rec.src.startsWith('HUD')) ? ' or a state award list' : ''}, but not matched to any property in HUD's Section 8 / multifamily files, so there are no HUD contracts, rents or owner records.</p>`;
+  h += kv([
+    state.center && p.dist != null && ['Distance from center', `${p.dist.toFixed(2)} mi`],
+    ['Location', loc],
+    ['Total units (LIHTC record)', num(p.total)],
+    ['Low-income units', num(lihUnits(p))],
+    p.qct != null && ['2027 QCT / DDA', esc(zoneText(p))],
+    ['LIHTC contact company', co ? esc(co) + ' <span class="muted">(from the state award list; often the developer or managing GP)</span>' : '<span class="muted">Not published (the public HUD LIHTC layer leaves the company field blank)</span>'],
+    ['Program flags (HUD LIHTC database)', fl ? esc(fl) : '<span class="muted">None reported</span>'],
+    dup && ['Possible HUD duplicate', `<button class="link" data-pick="${esc(dup.id)}">${esc(pname(dup))}</button> <span class="muted">(${esc(p.dupWhy || '')}; check whether this is the same property)</span>`],
+  ]);
+  const look = [];
+  if (co) look.push(`<a href="https://opencorporates.com/companies?q=${encodeURIComponent(co)}" target="_blank" rel="noopener">OpenCorporates: ${esc(co)}</a>`);
+  if (p.st === 'AZ') look.push('<a href="https://ecorp.azcc.gov/EntitySearch/Index" target="_blank" rel="noopener">Arizona Corporation Commission eCorp</a>');
+  if (p.st === 'AZ' && p.addr) look.push(`<a href="https://mcassessor.maricopa.gov/mcs/?q=${encodeURIComponent(p.addr + ' ' + (p.city || ''))}" target="_blank" rel="noopener">Maricopa County Assessor</a> (if in Maricopa County)`);
+  if (look.length) h += '<h3>Find the owner</h3>' + kv([['Look up', look.join('<br>')]]) + '<p class="note">HUD\'s LIHTC database has no owner entity. The county assessor or recorder shows the owner of record; the state housing finance agency\'s compliance list names the owner and management agent.</p>';
+  h += lihtcHtml(p);
   $('#detailBody').innerHTML = h;
   $('#detail').hidden = false;
   $('.detail-scroll').scrollTop = 0;
@@ -644,10 +736,11 @@ function lihtcHtml(p) {
     ['Resyndication', L.resynd ? `New allocation in ${L.resynd}` : '<span class="muted">None found</span>'],
   ]);
   h += '<div class="scrollx"><table><thead><tr><th>Match</th><th>Source record</th><th class="num">Alloc.</th><th class="num">PIS</th><th>Credit</th><th>Type</th><th class="num">Units</th><th>Source</th></tr></thead><tbody>';
-  for (const { rec: r, tier, why } of L.links) h += `<tr style="${tier === 2 ? 'opacity:.6' : ''}"><td><span class="b ${tier === 0 ? 'V' : tier === 1 ? 'R' : 'U'}">${TL[tier]}</span></td>
+  for (const { rec: r, tier, why } of L.links) h += `<tr style="${tier === 2 ? 'opacity:.6' : ''}"><td><span class="b ${p.lihOnly ? 'T' : tier === 0 ? 'V' : tier === 1 ? 'R' : 'U'}">${p.lihOnly ? 'Record' : TL[tier]}</span></td>
     <td>${esc(r.project)}<div class="muted">${esc([r.addr, r.city, r.zip].filter(Boolean).join(', '))}${r.id ? ` · ID ${esc(r.id)}` : ''}</div><div class="muted">${esc(why)}</div></td>
     <td class="num">${r.alloc ?? '–'}</td><td class="num">${r.pis ?? '–'}</td><td>${esc(r.credit || '')}${r.bond ? ' · bonds' : ''}</td><td>${esc(r.type || '')}</td>
     <td class="num">${num(r.units)}</td><td class="srccell"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.src)}</a></td></tr>`;
+  if (p.lihOnly) return h + '</tbody></table></div><p class="note">Records at the same address (or with the same name in the same ZIP) are grouped as one project, so resyndications and renamed rounds show together. Year 15 = latest PIS + 14. HUD\'s LIHTC database covers projects placed in service through about 2022; state award lists (so far Arizona) add later allocations.</p>';
   return h + '</tbody></table></div><p class="note">LIHTC records carry no HUD property ID, so they are matched by address, location and name. "Possible" matches are left out of the summary and filters unless you tick "Count possible matches". Year 15 = latest PIS + 14.</p>';
 }
 function contractCard(c, isMatch) {
@@ -747,6 +840,7 @@ function buildFilters() {
   $('#ownMin').value = f.ownMin ?? ''; $('#ownMax').value = f.ownMax ?? '';
   $('#minTerm').value = String(f.minTerm);
   $('#propOnly').checked = f.propOnly;
+  if (FULL) $('#prog').value = f.prog;
   $('#oldCons').checked = f.oldCons;
 }
 function updateFilterCounts() {
@@ -907,7 +1001,7 @@ function download(name, rows) {
 function exportName(kind) {
   const c = state.center, d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const tag = c ? `${(c.label || 'pin').replace(/[^A-Za-z0-9]+/g, '-').slice(0, 40)}-${state.radius}mi` : 'national';
-  return `HUD-${kind}-${tag}-${d}.csv`;
+  return `${FULL ? 'HUD-LIHTC' : 'HUD'}-${kind}-${tag}-${d}.csv`;
 }
 const FIN_HEAD = ['FHA loan types', 'FHA numbers', 'Primary loan final endorsement', 'Primary loan maturity', 'Primary loan rate', 'Primary loan balance',
   'Loan includes LIHTC (TC)', 'Loan tax-exempt bonds (TE)', 'Ownership effective date', 'LIHTC match confidence', 'LIHTC latest allocation year',
@@ -944,12 +1038,14 @@ const exportLines = () => download(exportName('rents-by-bedroom'), linesTable())
 function propsTable() {
   const head = ['Distance (mi)', 'HUD property ID', 'Property', 'Address', 'City', 'State', 'ZIP', 'County', 'Location precision', 'Total units',
     'Assisted units (property)', 'Matching contracts', 'All contracts', 'Contract numbers', 'Contract types', 'Programs', 'Statuses',
-    'Bedroom mix (contract units)', 'Best rent basis', 'Next current expiration', 'Next overall expiration', 'Latest renewal owner-signature date', 'Owner', 'Management', ...FIN_HEAD, ...OWN_HEAD];
+    'Bedroom mix (contract units)', 'Best rent basis', 'Next current expiration', 'Next overall expiration', 'Latest renewal owner-signature date', 'Owner', 'Management', ...FIN_HEAD, ...OWN_HEAD,
+    ...(FULL ? ['Record type', 'LIHTC low-income units', 'LIHTC contact company', 'LIHTC program flags', 'Possible HUD duplicate (property ID)'] : [])];
   const rows = sortRows(state.result.out, PROP_COLS).map(r => [
     r.p.dist != null && state.center ? r.p.dist.toFixed(2) : '', r.p.id, r.p.name, r.p.addr, r.p.city, r.p.st, r.p.zip, r.p.county, LOC_CLASS[r.p.lc],
     r.p.total, r.p.assisted, r.mc.length, r.p.cons.length, r.mc.map(m => m.c.no).join('; '), uniq(r.mc.map(m => doc(m.c))).join('; '),
     uniq(r.mc.map(m => programOf(m.c))).join('; '), uniq(r.mc.map(m => statusOf(m.c))).join('; '),
-    bedMix(r.mc), BASIS_SHORT[r.best], minOf(r.mc.map(m => m.c.curExp)), minOf(r.mc.map(m => m.c.ovExp)), maxOf(r.mc.map(m => m.c.signed)) || UNK, r.p.ow?.name || r.p.owner, r.p.ag?.name || r.p.mgmt, ...finCsv(r.p), ...ownCsv(r.p)]);
+    bedMix(r.mc), BASIS_SHORT[r.best], minOf(r.mc.map(m => m.c.curExp)), minOf(r.mc.map(m => m.c.ovExp)), r.p.lihOnly ? '' : maxOf(r.mc.map(m => m.c.signed)) || UNK, r.p.ow?.name || r.p.owner, r.p.ag?.name || r.p.mgmt, ...finCsv(r.p), ...ownCsv(r.p),
+    ...(FULL ? [recType(r.p), lihUnits(r.p), lihCompany(r.p), lflagText(r.p), r.p.dupOf || ''] : [])]);
   return [head, ...rows];
 }
 const exportProps = () => download(exportName('properties'), propsTable());
@@ -963,14 +1059,14 @@ function writeHash() {
   else if (state.center) { h.set('lat', state.center.lat.toFixed(6)); h.set('lon', state.center.lon.toFixed(6)); }
   if (state.center) h.set('r', state.radius);
   if (state.selected && state.selected !== state.center?.pid) h.set('sel', state.selected);
-  if (state.view === 'props') h.set('v', 'props');
+  if (state.view !== (FULL ? 'props' : 'lines')) h.set('v', state.view);
   try { history.replaceState(null, '', h.toString() ? '#' + h : location.pathname + location.search); } catch { /* some file:// contexts */ }
 }
 function readHash() {
   const h = new URLSearchParams(location.hash.slice(1));
   hashLock = true;
   if (h.get('r')) { state.radius = +h.get('r'); syncRadiusUI(); }
-  if (h.get('v') === 'props') setView('props');
+  if (h.get('v') === 'props' || h.get('v') === 'lines') setView(h.get('v'));
   const p = h.get('pid') && byId.get(h.get('pid'));
   if (p) pickProperty(p);
   else if (h.get('lat') && h.get('lon')) setCenter({ lat: +h.get('lat'), lon: +h.get('lon'), label: `Pin (${h.get('lat')}, ${h.get('lon')})` });
@@ -982,7 +1078,7 @@ function readHash() {
 function setView(v) {
   state.view = v; state.sort = null;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
-  renderTable(); writeHash();
+  if (FULL) refresh(); else { renderTable(); writeHash(); }  // full version: the summary's LIHTC note depends on the tab
 }
 function syncRadiusUI() {
   const opt = [...$('#radius').options].find(o => +o.value === state.radius);
@@ -992,7 +1088,7 @@ function syncRadiusUI() {
 /* ---------- about ---------- */
 function renderAbout() {
   const m = H.meta, s = m.stats;
-  $('#asof').textContent = `HUD files published ${m.hud_published} (downloaded ${m.downloaded})${m.rent_file ? ` · rents & UAs as of ${m.rent_file.asof}` : ''} · ${m.properties.toLocaleString()} property IDs · ${m.contracts.toLocaleString()} contracts`;
+  $('#asof').textContent = `HUD files published ${m.hud_published} (downloaded ${m.downloaded})${m.rent_file ? ` · rents & UAs as of ${m.rent_file.asof}` : ''} · ${m.properties.toLocaleString()} property IDs · ${m.contracts.toLocaleString()} contracts${FULL ? ` · + ${X.meta.projects.toLocaleString()} LIHTC-only projects` : ''}`;
   $('#aboutBody').innerHTML = `<h2 style="margin-top:0">About the data</h2>
   <p>Source: <b>${esc(m.workbook)}</b> (tab <i>HUD National Rents</i>, ${m.source_rows.toLocaleString()} rows; formula values read from the saved workbook and re-checked against the reconciliation formulas). Built ${esc(m.built)}.</p>${m.rent_file ? `<p>Rents and utility allowances: HUD <a href="${esc(m.rent_file.page)}" target="_blank" rel="noopener"><i>${esc(m.rent_file.name)}</i></a> (as of ${esc(m.rent_file.asof)}, downloaded ${esc(m.rent_file.downloaded)}, ${m.rent_file.rows.toLocaleString()} rows covering ${m.rent_file.contracts.toLocaleString()} contracts). For every contract in that file, its rows replace the earlier reported and estimated rents; ${m.rent_file.contracts_added.toLocaleString()} contracts that were only in that file were added (${m.rent_file.properties_added.toLocaleString()} of them have no property/address match, so they are searchable but not mapped).</p>` : ''}
   <h3>Rents</h3><ul>
@@ -1012,6 +1108,13 @@ function renderAbout() {
   <li>Owner entity, management agent and their contacts come from HUD's <a href="${esc(H.meta.owners.source)}" target="_blank" rel="noopener">MF Assistance &amp; Section 8 property file</a> (${H.meta.owners.properties.toLocaleString()} properties).</li>
   <li><b>Owner group (likely sponsor)</b>: owner entities that share an organization's email domain (free and ISP mail such as gmail.com is ignored), or, without one, the same mailing address. ${H.meta.owners.sponsor_groups.toLocaleString()} groups cover ${H.meta.owners.properties_in_groups.toLocaleString()} properties. It's a lead, not proof of control: confirm with state entity filings and recorded deeds. Search a sponsor name or email domain (e.g. "mercyhousing") to see its portfolio.</li></ul>` : ''}
   ${H.meta.zones ? `<h3>2027 QCT / DDA</h3><ul><li>${esc(H.meta.zones.note)}</li></ul>` : ''}
+  ${FULL ? `<h3>Full version: all LIHTC projects</h3><ul>
+  <li>This version adds every LIHTC project in HUD's LIHTC database and the state award lists (${X.meta.sources.map(s => `${esc(s.file)}, ${esc(s.fetched)}`).join('; ')}) that isn't already attached to a HUD property: ${X.meta.records_added.toLocaleString()} records grouped into ${X.meta.projects.toLocaleString()} projects. ${X.meta.records_on_hud_properties.toLocaleString()} of ${X.meta.records_total.toLocaleString()} records are already shown on HUD properties (high/medium matches). Built ${esc(X.meta.built)}.</li>
+  <li>Records at the same street address (or with the same name in the same ZIP, or within 60 m under a similar name) are grouped as one project, so resyndications and renamed rounds show together.</li>
+  <li>Locations: ${X.meta.located_lihtc.toLocaleString()} use the LIHTC record's own geocode, ${X.meta.located_zip.toLocaleString()} are placed at the ZIP centroid (approximate), and ${X.meta.no_location.toLocaleString()} have no coordinates or ZIP; those stay searchable by name or ID.</li>
+  <li>${X.meta.possible_hud_duplicates.toLocaleString()} LIHTC-only projects sit next to a HUD property on the same street with a different name ("possible" match). Their panel links the HUD property so you can check whether they're the same.</li>
+  <li>LIHTC-only projects have no HUD contracts, rents or owner records. Contract, rent and bedroom filters apply to HUD contracts only, so LIHTC-only projects are left out while any of those is set (the summary line says how many). Use the "Record type" filter to see one group at a time.</li>
+  <li>HUD's LIHTC database covers projects placed in service through about 2022 (layer last updated ${esc(X.meta.layer_updated || '2025-05-14')}). Later allocations come only from state award lists; so far Arizona.</li></ul>` : ''}
   <h3>Old contracts</h3><ul>
   <li>${cons.filter(c => c.old).length.toLocaleString()} contract numbers appear only in HUD's rent/UA file, not in HUD's active Section 8 contract list, so they have no type, program, status or dates. Most are predecessor contracts replaced by a renewal or a combined contract (e.g., an original "L" LMSA contract renewed under an "M" number). They're hidden by default; tick "Include old rent-file-only contracts" under Contract type to show them, labeled "${OLD_STATUS}". Their rents may be years old.</li></ul>
   <h3>Dates</h3><ul>
@@ -1134,6 +1237,8 @@ $('#f-spon').onclick = e => {
 $('#detailBody').addEventListener('click', e => {
   const b = e.target.closest('[data-show-spon]');
   if (b) filterToSponsor(+b.dataset.showSpon);
+  const pk = e.target.closest('[data-pick]');
+  if (pk && byId.get(pk.dataset.pick)) pickProperty(byId.get(pk.dataset.pick));
 });
 $('#f-city').onclick = e => {
   if (e.target.id === 'cityClear') state.f.city = new Set();
@@ -1151,6 +1256,7 @@ $('#lih').onchange = e => { state.f.lih = e.target.value; refresh(); };
 $('#lihPossible').onchange = e => { state.f.lihPossible = e.target.checked; refresh(); };
 for (const k of ['y15Min', 'y15Max', 'allocBefore']) $('#' + k).onchange = e => { state.f[k] = e.target.value === '' ? null : +e.target.value; refresh(); };
 $('#zone').onchange = e => { state.f.zone = e.target.value; refresh(); };
+if (FULL) $('#prog').onchange = e => { state.f.prog = e.target.value; refresh(); };
 $('#targetBtn').onclick = () => {
   const f = state.f = defaults();
   f.soa = new Set([...SOA_N.keys()].filter(k => k >= 0 && /223\(f\)/.test(D.soa[k])));
@@ -1205,6 +1311,16 @@ $('#exportLines').onclick = exportLines;
 $('#exportProps').onclick = exportProps;
 $('#aboutBtn').onclick = () => $('#about').showModal();
 
+if (FULL) {
+  document.title = 'HUD + LIHTC Affordable Housing Map';
+  $('.brand').textContent = 'HUD + LIHTC Affordable Housing Map';
+  $('#progBlock').hidden = false;
+  $('#prog').innerHTML = Object.entries(PROG_LABEL).map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('');
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === state.view));
+}
+$('#modeLink').textContent = FULL ? 'Section 8 version' : 'Full version: + all LIHTC projects';
+$('#modeLink').title = FULL ? 'Back to the HUD Section 8 map (smaller, faster)' : 'Adds every LIHTC project in HUD\'s LIHTC database (about 10 MB more data)';
+$('#modeLink').onclick = e => { e.preventDefault(); location.href = location.pathname + (FULL ? '' : '?all') + location.hash; };
 renderAbout();
 buildFilters();
 hashLock = true; refresh(); hashLock = false;  // keep an incoming #pid=… hash for readHash()
@@ -1212,5 +1328,5 @@ readHash();
 $('#loading').remove();
 
 // Exposed for console checks and automated tests.
-window.HUDMAP = { state, map, props, cons, lines, byId, D, compute, defaults, setCenter, setRadius, setView, pickProperty, select, refresh, rowsFor, haversine, localMatches, linesTable, propsTable, activeFilters };
+window.HUDMAP = { FULL, NB, state, map, props, cons, lines, byId, D, compute, defaults, setCenter, setRadius, setView, pickProperty, select, refresh, rowsFor, haversine, localMatches, linesTable, propsTable, activeFilters };
 })();
