@@ -1,6 +1,6 @@
-/* California rent screener: rent-study (RCS) conclusions vs HUD Small Area FMRs, and an estimate of market rent for every
-   California HUD rent line from the rent studies near it. The data file (ca_data.enc.js) is encrypted; nothing renders
-   until the password unlocks it. */
+/* Rent screener, one state at a time: rent-study (RCS) conclusions vs HUD Small Area FMRs, and an estimate of market rent
+   for every HUD rent line in the state from the rent studies near it (including studies just across the state line).
+   Each state's data file (data/<ST>.enc.js) is encrypted; nothing renders until the password unlocks it. */
 (function () {
 'use strict';
 const $ = (s, el = document) => el.querySelector(s);
@@ -30,10 +30,30 @@ const store = {
   del(k) { try { sessionStorage.removeItem(k); } catch (e) { /* private mode */ } },
 };
 
+/* ---------- state ---------- */
+const STATES = window.RS_STATES || [];
+const stName = Object.fromEntries(STATES);
+let ST = (new URLSearchParams(location.search).get('st') || store.get('rsState') || 'CA').toUpperCase();
+if (!stName[ST]) ST = 'CA';
+const fillStates = sel => { sel.innerHTML = STATES.map(([c, n]) => `<option value="${c}">${esc(n)}</option>`).join(''); sel.value = ST; };
+function setState(c) {
+  ST = c; store.set('rsState', c);
+  document.title = `${stName[c]} Rent Screener`;
+  $('.gate h1').textContent = `${stName[c]} Rent Screener`;
+  history.replaceState(null, '', location.pathname + '?st=' + c + location.hash);
+}
+fillStates($('#gateState')); fillStates($('#stateSel')); setState(ST);
+$('#gateState').addEventListener('change', e => setState(e.target.value));
+$('#stateSel').addEventListener('change', e => { store.set('rsState', e.target.value); location.href = location.pathname + '?st=' + e.target.value; });
+const loadData = () => new Promise((res, rej) => {
+  if (window.RS_ENC && window.RS_ENC[ST]) return res();
+  const el = document.createElement('script'); el.src = `data/${ST}.enc.js?v=${window.RS_BUILD || 1}`; el.onload = res; el.onerror = rej; document.head.appendChild(el);
+});
+
 /* ---------- unlock ---------- */
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function decrypt(pw) {
-  const E = window.CA_ENC;
+  const E = window.RS_ENC[ST];
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: b64(E.salt), iterations: E.iter },
     base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
@@ -43,7 +63,9 @@ async function decrypt(pw) {
 }
 const pwIn = $('#pw'), gateErr = $('#gateErr'), gateBtn = $('#gateBtn');
 async function unlock(pw, quiet) {
-  if (!window.CA_ENC) { gateErr.textContent = 'The data file did not load. Reload the page.'; return; }
+  gateBtn.disabled = true;
+  try { await loadData(); } catch (e) { gateBtn.disabled = false; gateErr.textContent = 'The data file did not load. Check the connection and reload the page.'; return; }
+  if (!(window.RS_ENC && window.RS_ENC[ST])) { gateBtn.disabled = false; gateErr.textContent = 'The data file did not load. Reload the page.'; return; }
   if (!(window.crypto && crypto.subtle && window.DecompressionStream)) { gateErr.textContent = 'This browser cannot open the data. Use a current Chrome, Edge, Safari or Firefox over https.'; return; }
   gateBtn.disabled = true; gateErr.textContent = quiet ? '' : 'Unlocking…';
   let data;
@@ -61,18 +83,21 @@ if (savedPw) unlock(savedPw, true); else pwIn.focus();
 
 /* ---------- app ---------- */
 function start(D) {
-  const M = D.meta, P = D.props, RCS = D.rcs, SAF = D.safmr;
+  const M = D.meta, P = D.props, RCS = D.rcs, SAF = D.safmr, SN = stName[ST];
   const pById = new Map(P.map(p => [p.id, p]));
+  // Properties in other states that have a study near this state's properties: location and name only.
+  const spById = new Map((D.sprops || []).map(p => [p.id, Object.assign(p, { cons: [], lines: [], away: true, county: titleCase(p.county), city: titleCase(p.city),
+    hay: [p.name, p.addr, p.city, p.state, p.zip, p.county].join(' ').toLowerCase() })]));
   const today = new Date().toISOString().slice(0, 10);
   const addMonths = n => { const d = new Date(); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
   const yearAgo = addMonths(-12);
   for (const p of P) {
-    p.county = titleCase(p.county); p.city = titleCase(p.city);
+    p.state = ST; p.county = titleCase(p.county); p.city = titleCase(p.city);
     p.hay = [p.name, p.addr, p.city, p.zip, p.county, p.owner, p.mgmt, p.id].join(' ').toLowerCase();
   }
   // One entry per property and firm (that firm's latest study there), newest first; p.rcs = the property's latest from any firm.
   for (const r of RCS) {
-    r.p = pById.get(r.id); (r.p.studies = r.p.studies || []).push(r); if (!r.p.rcs) r.p.rcs = r;
+    r.p = pById.get(r.id) || spById.get(r.id); (r.p.studies = r.p.studies || []).push(r); if (!r.p.rcs) r.p.rcs = r;
     r.ratio = median(r.asis.map(x => x.pct).filter(ok));                                   // vs SAFMR on the study date
     r.ratio27 = median(r.asis.map(x => ok(x.pct27) ? x.pct27 : x.pct).filter(ok));         // the same dollars vs today's SAFMR
     r.asis.forEach((x, i) => { x.renRow = r.ren.length === r.asis.length ? r.ren[i] : r.ren.find(y => y.unit === x.unit && y.sf === x.sf) || null; });
@@ -84,7 +109,7 @@ function start(D) {
     const h = Math.sin(dp / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dl / 2) ** 2;
     return 2 * R_EARTH * Math.asin(Math.sqrt(h));
   };
-  for (const p of P) p.near = RCS.filter(r => r.p !== p).map(r => ({ r, d: dist(p, r.p) })).sort((a, b) => a.d - b.d);
+  for (const p of P) p.near = RCS.filter(r => r.p !== p).map(r => ({ r, d: dist(p, r.p) })).filter(o => o.d <= 500).sort((a, b) => a.d - b.d);
   const zipProps = {};
   for (const p of P) (zipProps[p.zip] = zipProps[p.zip] || []).push(p);
 
@@ -96,12 +121,15 @@ function start(D) {
     m36: ['Studies from the last 3 years', r => r.date >= addMonths(-36)],
     final: ['Final reports and grids (no prelims)', r => !r.prelim],
   };
+  // The fallback % and the calibration tables use this state's own studies (all loaded studies if it has fewer than 5).
+  const HOME = RCS.filter(r => !r.p.away);
+  const POOL = HOME.filter(r => ok(r.ratio)).length >= 5 ? HOME : RCS, FB = POOL === HOME ? 'Statewide' : 'Regional';
   const firmN = {};
   for (const r of RCS) firmN[r.firm] = (firmN[r.firm] || 0) + 1;
   const FIRMS = Object.keys(firmN).sort((a, b) => firmN[b] - firmN[a] || a.localeCompare(b));
   const studyOk = r => S.firms.has(r.firm) && CAL[S.cal][1](r) && ok(r.ratio);
   function calib(setKey, firms) {
-    const set = RCS.filter(r => CAL[setKey][1](r) && (!firms || firms.has(r.firm)) && ok(r.ratio));
+    const set = POOL.filter(r => CAL[setKey][1](r) && (!firms || firms.has(r.firm)) && ok(r.ratio));
     const ps = set.map(r => r.ratio), byBed = {}, byYear = {};
     for (const r of set) {
       const g = {};
@@ -182,7 +210,7 @@ function start(D) {
   function basisText(p, e) {
     if (e.basis === 'own') return `Own study ${e.parts[0].r.date.slice(0, 7)}`;
     if (e.basis === 'near') return e.parts.length === 1 ? `${e.parts[0].r.name} (${mi(e.parts[0].d)} mi)` : `${plural(e.parts.length, 'study')} within ${S.radius} mi`;
-    if (e.basis === 'state') return `Statewide ${S.ratio}%`;
+    if (e.basis === 'state') return `${FB} ${S.ratio}%`;
     return e.saf ? `No study within ${S.radius} mi` : 'No SAFMR';
   }
 
@@ -218,7 +246,7 @@ function start(D) {
         next: cs.map(c => c.exp).filter(Boolean).sort()[0] || null, ov: cs.map(c => c.ovExp).filter(Boolean).sort()[0] || null,
         docs: [...new Set(cs.map(c => c.doc || '—'))].join(', '), ropts: [...new Set(cs.map(c => ropCode(c.ropt)))].join(', '),
         basis: bases.has('own') ? `Own study ${own.date.slice(0, 7)}` : bases.has('near') ? (refs.length === 1 ? `1 study within ${S.radius} mi` : `${refs.length} studies within ${S.radius} mi`)
-          : bases.has('state') ? `Statewide ${S.ratio}%` : `None within ${S.radius} mi` };
+          : bases.has('state') ? `${FB} ${S.ratio}%` : `None within ${S.radius} mi` };
       if (cut && !(row.next && row.next <= cut)) continue;
       if (ok(S.minUnits) && U < +S.minUnits) continue;
       COV.n++; if (est) COV.est++;
@@ -253,6 +281,8 @@ function start(D) {
   /* ---------- tables ---------- */
   const C = (k, t, v, o = {}) => ({ k, t, v, ...o });
   const feeOf = a => ok(a) && a > 0 ? a * S.fee / 100 : null;
+  const estTag = x => x.safEst ? ' <span class="est" title="This ZIP was not in the SAFMR file on the study date (before FY2025 HUD published SAFMRs only for metro areas). Estimated as its FY2025 SAFMR × the state\'s median SAFMR change from that vintage to FY2025.">est.</span>' : '';
+  const uaTag = x => !x.uaSrc || x.uaSrc === 'study' ? '' : x.uaSrc === 'included in the conclusion' ? ' <span class="est" title="The study concludes gross rents, so no allowance is added">gross</span>' : /median/.test(x.uaSrc) ? ` <span class="est" title="The grid has no utility allowance and the property has no HUD allowance for this bedroom count; the ${esc(x.uaSrc)} is used">area</span>` : ' <span class="est" title="The grid has no utility allowance; the current HUD allowance is used">HUD</span>';
   const studyBadge = p => p.rcs ? ` <span class="b rcs" title="Own rent study ${esc(p.rcs.date)}">RCS</span>` : '';
   const VIEWS = {
     props: { rows: () => OUT, pid: r => r.p.id, cols: [
@@ -295,7 +325,7 @@ function start(D) {
     ] },
     rcs: { rows: () => RROWS, pid: r => r.p.id, cols: [
       C('name', 'Property', r => r.r.name, { f: r => `<b>${esc(r.r.name)}</b>` }),
-      C('city', 'City', r => r.p.city),
+      C('city', 'City', r => r.p.city), C('st', 'State', r => r.p.state),
       C('date', 'Last done', r => r.r.date, { f: r => esc(r.r.date) + (r.r.prelim ? ' <span class="b pre" title="Preliminary report">prelim</span>' : '') }),
       C('firm', 'Firm', r => r.r.firm),
       C('reach', 'Props using it', r => REACH[r.r.sid] || 0, { num: 1, tip: 'Properties in the current screen whose estimate draws on this study (within the radius)' }),
@@ -306,9 +336,9 @@ function start(D) {
       C('contract', 'Contract at study', r => r.x.contract, { num: 1, f: r => money(r.x.contract) }),
       C('rcs', 'RCS as is', r => r.x.rcs, { num: 1, f: r => `<b>${money(r.x.rcs)}</b>` }),
       C('ren', 'As renovated', r => r.x.renRow ? r.x.renRow.rcs : null, { num: 1, f: r => money(r.x.renRow && r.x.renRow.rcs) }),
-      C('ua', 'UA', r => r.x.ua, { num: 1, f: r => money(r.x.ua) + (r.x.uaSrc && r.x.uaSrc !== 'study' ? ' <span class="est" title="The grid has no utility allowance; current HUD allowance used">HUD</span>' : '') }),
+      C('ua', 'UA', r => r.x.ua, { num: 1, f: r => money(r.x.ua) + uaTag(r.x) }),
       C('gross', 'Gross', r => r.x.gross, { num: 1, f: r => money(r.x.gross) }),
-      C('safmr', 'SAFMR then', r => r.x.safmr, { num: 1, f: r => money(r.x.safmr), tip: 'SAFMR in effect on the study date' }),
+      C('safmr', 'SAFMR then', r => r.x.safmr, { num: 1, f: r => money(r.x.safmr) + estTag(r.x), tip: 'SAFMR in effect on the study date' }),
       C('vint', 'Vintage', r => r.r.vintage),
       C('pct', '% SAFMR', r => r.x.pct, { num: 1, f: r => `<b>${pct(r.x.pct)}</b>`, tip: 'Study gross ÷ the SAFMR in effect on the study date' }),
       C('s27', 'FY2027 SAFMR', r => r.x.s27, { num: 1, f: r => money(r.x.s27) }),
@@ -369,7 +399,7 @@ function start(D) {
       const ps = new Set(RROWS.map(r => r.p.id));
       const ns = new Set(RROWS.map(r => r.r)).size;
       t = `${RROWS.length} unit types · ${plural(ns, 'study')} across ${ps.size} properties · each firm's latest study per property, as-is conclusions`;
-    } else t = `${ZROWS.length.toLocaleString()} California ZIPs in the FY2027 SAFMR file`;
+    } else t = `${ZROWS.length.toLocaleString()} ${esc(SN)} ZIPs in the FY2027 SAFMR file`;
     $('#summary').innerHTML = t;
   }
   $('#ctbl thead').addEventListener('click', e => {
@@ -476,7 +506,7 @@ function start(D) {
     const refs = refsFor(p);
     if (!refs.length) {
       const nearest = p.near.find(o => studyOk(o.r));
-      h += `<p class="note">No rent study within ${S.radius} miles${S.fallback === 'state' ? `, so the statewide ${S.ratio}% is used` : ''}.`;
+      h += `<p class="note">No rent study within ${S.radius} miles${S.fallback === 'state' ? `, so the ${FB.toLowerCase()} ${S.ratio}% is used` : ''}.`;
       if (nearest) h += ` The nearest is <button class="link" data-goto="${esc(nearest.r.id)}">${esc(nearest.r.name)}</button>, ${mi(nearest.d)} miles away (${esc(nearest.r.firm)}, ${esc(nearest.r.date)}).
         <button class="link" data-widen="${Math.ceil(nearest.d)}">Widen the radius to ${Math.ceil(nearest.d)} miles</button>`;
       return h + '</p>';
@@ -497,24 +527,48 @@ function start(D) {
   function renderDetail(p) {
     const row = OUT.find(r => r.p === p);
     const okc = p.cons.map(conOk);
-    let h = `<h2>${esc(p.name)}</h2><div class="muted">${esc(p.addr)}, ${esc(p.city)}, CA ${esc(p.zip)} · ${esc(p.county)} County</div>
-      <p class="tiny"><a href="../#sel=${esc(p.id)}" target="_blank" rel="noopener">Open on the national map</a></p>
-      <dl class="kv"><dt>HUD property ID</dt><dd>${esc(p.id)}</dd><dt>Owner</dt><dd>${esc(p.owner || '–')}${p.ownerType ? ` <span class="muted">(${esc(p.ownerType)})</span>` : ''}</dd>
+    if (p.away) return renderAway(p);
+    let h = `<h2>${esc(p.name)}</h2><div class="muted">${p.addr ? esc(p.addr) + ', ' : ''}${esc(p.city)}, ${esc(ST)} ${esc(p.zip)}${p.county ? ` · ${esc(p.county)} County` : ''}</div>
+      ${p.nohud ? `<div class="callout muted">${esc(p.nohud)} Its rent study is loaded so estimates for nearby HUD properties can use it; it has no HUD contracts or rent lines.</div>`
+        : `<p class="tiny"><a href="../#sel=${esc(p.id)}" target="_blank" rel="noopener">Open on the national map</a></p>`}
+      <dl class="kv"><dt>HUD property ID</dt><dd>${p.nohud ? '–' : esc(p.id)}</dd><dt>Owner</dt><dd>${esc(p.owner || '–')}${p.ownerType ? ` <span class="muted">(${esc(p.ownerType)})</span>` : ''}</dd>
       <dt>Management agent</dt><dd>${esc(p.mgmt || '–')}</dd><dt>Units (total / assisted)</dt><dd>${int(p.total)} / ${int(p.assisted)}</dd>
       <dt>SAFMR area</dt><dd>${esc(p.area || 'ZIP not in the SAFMR file')}</dd></dl>`;
     if (row && row.est) h += `<div class="callout">Estimated gap <b class="${sgn(row.gapU)}">${money(row.gapU)}</b> per unit per month · <b class="${sgn(row.annual)}">${money(row.annual)}</b> a year on ${int(row.units)} units` +
       (S.fee && row.annual > 0 ? ` · fee at ${S.fee}%: <b>${money(feeOf(row.annual))}</b>/yr` : '') + `<div class="subnote">From: ${esc(row.basis)}. Changes with the settings on the left.</div></div>`;
     else if (row) h += `<div class="callout muted">No estimate: no usable rent study within ${S.radius} miles.</div>`;
-    else h += `<div class="callout muted">Not in the current list: no rent line passes the filters on the left${p.lines.length && !S.showNoEst ? ', or it has no estimate' : ''}.</div>`;
-    h += sourceSection(p, row);
-    h += `<h3>Rents vs FY2027 SAFMR</h3><div class="scrollx"><table class="dt"><thead><tr><th>BR</th><th class="num">Units</th><th class="num">Contract</th><th class="num">UA</th><th class="num">Gross</th><th class="num">SAFMR</th><th class="num">% SAFMR</th><th class="num">Market %</th><th class="num">Est. market</th><th class="num">Gap</th><th>Contract</th></tr></thead><tbody>`;
+    else if (p.lines.length) h += `<div class="callout muted">Not in the current list: no rent line passes the filters on the left${!S.showNoEst ? ', or it has no estimate' : ''}.</div>`;
+    else if (!p.nohud) h += `<div class="callout muted">No HUD rent lines on file for this property, so it has no estimate. Its rent study is used for properties near it.</div>`;
+    if (p.lines.length) h += sourceSection(p, row) + `<h3>Rents vs FY2027 SAFMR</h3><div class="scrollx"><table class="dt"><thead><tr><th>BR</th><th class="num">Units</th><th class="num">Contract</th><th class="num">UA</th><th class="num">Gross</th><th class="num">SAFMR</th><th class="num">% SAFMR</th><th class="num">Market %</th><th class="num">Est. market</th><th class="num">Gap</th><th>Contract</th></tr></thead><tbody>`;
     for (const ln of [...p.lines].sort((a, b) => a.bed - b.bed)) {
       const e = lineEst(p, ln), c = p.cons[ln.c];
       h += `<tr class="${okc[ln.c] ? '' : 'off'}"><td>${bedName(ln.bed)}</td><td class="num">${ln.units}</td><td class="num">${money(ln.rent)}</td><td class="num">${money(ln.ua)}</td><td class="num">${money(e.gross)}</td>
         <td class="num">${money(e.saf)}${e.safSrc === 'area FMR' ? ' <span class="est">FMR</span>' : ''}</td><td class="num">${pct(e.curPct)}</td><td class="num">${pct(e.k)}</td><td class="num">${money(e.estRent)}</td>
         <td class="num ${sgn(e.gap)}">${money(e.gap)}</td><td>${esc(c.no)}</td></tr>`;
     }
-    h += `</tbody></table></div><p class="note">Est. market = market % × SAFMR − UA (contract-rent basis). Gap = est. market − contract rent.${p.lines.some(ln => !okc[ln.c]) ? ' Grey rows are on contracts the filters leave out.' : ''}</p>`;
+    if (p.lines.length) h += `</tbody></table></div><p class="note">Est. market = market % × SAFMR − UA (contract-rent basis). Gap = est. market − contract rent.${p.lines.some(ln => !okc[ln.c]) ? ' Grey rows are on contracts the filters leave out.' : ''}</p>`;
+    h += studySections(p);
+    if (p.cons.length) h += `<h3>Contracts</h3>`;
+    for (const [i, c] of p.cons.entries()) {
+      h += `<div class="contract${okc[i] ? '' : ' dim'}"><div class="contract-head"><b>${esc(c.no)}</b><span>${esc(c.doc || 'no doc type')}</span><span class="muted">${esc(c.prog || '')}</span><span class="muted">${esc(c.status || 'not in active list')}</span></div>
+        <dl class="kv"><dt>Assisted units</dt><dd>${int(c.units)}</dd><dt>Current term</dt><dd>${esc(c.eff || '?')} to ${esc(c.exp || '?')}${c.term ? ` (${c.term} months)` : ''}</dd>
+        <dt>Overall expiration</dt><dd>${esc(c.ovExp || '–')}</dd><dt>Renewal option</dt><dd>${esc(c.ropt || '–')}</dd></dl></div>`;
+    }
+    $('#detailBody').innerHTML = h;
+    $('#detail').hidden = false;
+  }
+  // A study property in another state: its studies only, with a link to that state's screener.
+  function renderAway(p) {
+    const n = stName[p.state] || p.state;
+    let h = `<h2>${esc(p.name)}</h2><div class="muted">${esc(p.addr || '')}${p.addr ? ', ' : ''}${esc(p.city)}, ${esc(p.state)} ${esc(p.zip)}</div>
+      <div class="callout muted">This property is in ${esc(n)}. Its rent studies are loaded here so estimates for nearby ${esc(SN)} properties can use them.
+      <div class="subnote"><a href="?st=${esc(p.state)}#sel=${esc(p.id)}">Open it in the ${esc(n)} screener</a></div></div>`;
+    h += studySections(p);
+    $('#detailBody').innerHTML = h;
+    $('#detail').hidden = false;
+  }
+  function studySections(p) {
+    let h = '';
     const own = ownStudy(p);
     for (const r of p.studies || []) {
       const tag = r === own ? ' <span class="b rcs">used</span>' : !studyOk(r) ? ' <span class="muted">· left out by the filters</span>' : '';
@@ -526,8 +580,8 @@ function start(D) {
       if (r.note) h += `<p class="note">${esc(r.note)}</p>`;
       h += `<div class="scrollx"><table class="dt"><thead><tr><th>Unit</th><th class="num">SF</th><th class="num">Units</th><th class="num">Contract then</th><th class="num">As is</th><th class="num">Renovated</th><th class="num">UA</th><th class="num">Gross</th><th class="num">SAFMR then</th><th class="num">%</th><th class="num">% FY27</th></tr></thead><tbody>`;
       for (const x of r.asis) h += `<tr><td>${esc(x.unit)}</td><td class="num">${int(x.sf)}</td><td class="num">${int(x.units)}</td><td class="num">${money(x.contract)}</td><td class="num"><b>${money(x.rcs)}</b></td>
-        <td class="num">${money(x.renRow && x.renRow.rcs)}</td><td class="num">${money(x.ua)}${x.uaSrc && x.uaSrc !== 'study' ? ' <span class="est">HUD</span>' : ''}</td><td class="num">${money(x.gross)}</td>
-        <td class="num">${money(x.safmr)}</td><td class="num"><b>${pct(x.pct)}</b></td><td class="num">${pct(x.pct27)}</td></tr>`;
+        <td class="num">${money(x.renRow && x.renRow.rcs)}</td><td class="num">${money(x.ua)}${uaTag(x)}</td><td class="num">${money(x.gross)}</td>
+        <td class="num">${money(x.safmr)}${estTag(x)}</td><td class="num"><b>${pct(x.pct)}</b></td><td class="num">${pct(x.pct27)}</td></tr>`;
       h += `</tbody></table></div>`;
     }
     const hist = p.rcs ? p.rcs.history : [];
@@ -537,14 +591,7 @@ function start(D) {
         <td class="wrap">${s.asis.map(([u, v]) => `${esc(u)} ${money(v)}`).join('<br>')}</td><td class="wrap">${s.ren.map(([u, v]) => `${esc(u)} ${money(v)}`).join('<br>') || '–'}</td></tr>`;
       h += `</tbody></table></div>`;
     }
-    h += `<h3>Contracts</h3>`;
-    for (const [i, c] of p.cons.entries()) {
-      h += `<div class="contract${okc[i] ? '' : ' dim'}"><div class="contract-head"><b>${esc(c.no)}</b><span>${esc(c.doc || 'no doc type')}</span><span class="muted">${esc(c.prog || '')}</span><span class="muted">${esc(c.status || 'not in active list')}</span></div>
-        <dl class="kv"><dt>Assisted units</dt><dd>${int(c.units)}</dd><dt>Current term</dt><dd>${esc(c.eff || '?')} to ${esc(c.exp || '?')}${c.term ? ` (${c.term} months)` : ''}</dd>
-        <dt>Overall expiration</dt><dd>${esc(c.ovExp || '–')}</dd><dt>Renewal option</dt><dd>${esc(c.ropt || '–')}</dd></dl></div>`;
-    }
-    $('#detailBody').innerHTML = h;
-    $('#detail').hidden = false;
+    return h;
   }
   $('#detailBody').addEventListener('click', e => {
     const g = e.target.closest('[data-goto]'), w = e.target.closest('[data-widen]');
@@ -560,6 +607,7 @@ function start(D) {
   for (const c of [...new Set(P.map(p => p.county).filter(Boolean))].sort()) county.insertAdjacentHTML('beforeend', `<option>${esc(c)}</option>`);
   const calSel = $('#cal');
   for (const k in CAL) calSel.insertAdjacentHTML('beforeend', `<option value="${esc(k)}">${esc(CAL[k][0])} (${RCS.filter(CAL[k][1]).length})</option>`);
+  $('#fallback option[value="state"]').textContent = FB === 'Statewide' ? 'Use a statewide %' : 'Use a % from the studies loaded (this state has fewer than 5)';
   $('#f-doc').innerHTML = DOCS.filter(d => docCount[d]).map(d => `<label class="chk"><input type="checkbox" data-doc="${d}"> ${d === '—' ? 'No contract type on file' : d}<span class="n">${docCount[d]}</span></label>`).join('');
   $('#f-firm').innerHTML = FIRMS.map(f => `<label class="chk"><input type="checkbox" data-firm="${esc(f)}"> ${esc(f)}<span class="n">${firmN[f]}</span></label>`).join('');
   $('#f-ropt').innerHTML = ROPTS.map(r => `<label class="chk"><input type="checkbox" data-ropt="${esc(r)}"> <span><b>${esc(r)}</b> ${esc(ropLabel[r])}</span><span class="n">${ropCount[r]}</span></label>`).join('');
@@ -617,27 +665,31 @@ function start(D) {
     const V = VIEWS[S.view], rows = sorted();
     const cell = v => { if (v == null || (typeof v === 'number' && !isFinite(v))) return ''; const s = typeof v === 'number' ? String(Math.round(v * 10000) / 10000) : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const csv = [V.cols.map(c => cell(c.t)).join(','), ...rows.map(r => V.cols.map(c => cell(c.v(r))).join(','))].join('\r\n');
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })), download: `ca-${S.view}-${today}.csv` });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })), download: `${ST.toLowerCase()}-${S.view}-${today}.csv` });
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   });
 
   /* ---------- about ---------- */
-  const reports = RCS.filter(r => !r.kind.startsWith('Grid workbook')).length, nProps = new Set(RCS.map(r => r.id)).size;
-  $('#asof').textContent = `HUD contract rents as of ${M.hud.asof} · FY2027 SAFMRs · ${nProps} properties with rent studies from ${FIRMS.length} firms (${M.studies} studies on file)`;
+  const reports = RCS.filter(r => !r.kind.startsWith('Grid workbook')).length, nProps = new Set(HOME.map(r => r.id)).size;
+  const nAway = new Set(RCS.filter(r => r.p.away).map(r => r.id)).size, homeFirms = new Set(HOME.map(r => r.firm)).size;
+  $('#asof').textContent = `HUD contract rents as of ${M.hud.asof} · FY2027 SAFMRs · ${nProps ? `${nProps} ${SN} ${nProps === 1 ? 'property' : 'properties'} with rent studies from ${homeFirms} ${homeFirms === 1 ? 'firm' : 'firms'} (${M.studies} ${M.studies === 1 ? 'study' : 'studies'} on file)` : `No ${SN} rent studies on file yet`}` +
+    (nAway ? ` · ${nAway} ${nProps ? 'more ' : ''}${nAway === 1 ? 'property' : 'properties'} with studies nearby across the state line${nProps ? '' : ' (widen the radius to use them)'}` : '');
   const vint = M.safmr_vintages.map(v => `${esc(v.label)} (from ${esc(v.eff)})`).join(', ');
   $('#aboutBody').innerHTML = `<h2>How this screen works</h2>
     <h3>1. What each rent study concluded, as a % of SAFMR</h3>
-    <p>${nProps} California properties have rent comparability studies in the Rent Grid Library (${esc(M.library)}), from ${FIRMS.length} appraisal firms: ${FIRMS.map(f => `${esc(f)} ${firmN[f]}`).join(', ')}.
+    <p>${nProps} ${esc(SN)} properties have rent comparability studies in the Rent Grid Library (${esc(M.library)})${nAway ? `, and ${nAway} properties in neighboring states within ${M.border_miles} miles of a ${esc(SN)} property are loaded too, so estimates near the state line can use them` : ''}.
+      The studies loaded come from ${FIRMS.length} appraisal firms: ${FIRMS.map(f => `${esc(f)} ${firmN[f]}`).join(', ')}.
       The screen uses each firm's latest study at each property (${RCS.length} studies: ${reports} PDF reports, ${RCS.length - reports} grid workbooks dated by last save). Every firm's study counts the same; untick firms under "Appraisal firms" to leave them out.
       For each study's as-is conclusion, gross rent = the concluded contract rent + the study's utility allowance. That is divided by the HUD Small Area FMR for the study's ZIP and bedroom count <i>in effect on the study date</i>,
-      including mid-year revisions: ${vint}. Where a grid has no utility allowance, the current HUD allowance is used and marked "HUD".</p>
+      including mid-year revisions: ${vint}. Where a grid has no utility allowance, the current HUD allowance is used and marked "HUD"; for a property with no HUD allowance (not in the HUD file), the county's median HUD allowance for that bedroom count is used and marked "area".
+      Before FY2025, HUD published SAFMRs only for metro areas; for a study in a ZIP missing from its vintage, the SAFMR then is estimated as the ZIP's FY2025 SAFMR × the state's median SAFMR change from that vintage to FY2025 (marked "est.").</p>
     <h3>2. Nearby studies set each property's market %</h3>
     <ul><li>For each HUD property, the studies within the radius (default 5 miles, straight-line) are used. With "Match the bedroom count" on, a study contributes its own % for that unit size when it has one, otherwise its median.</li>
       <li>"Average, closer ones count more" weights each study by 1 ÷ distance (distances under a quarter mile count as a quarter mile). "Median" and "Nearest study only" are the alternatives.</li>
       <li>"Bring studies to today": a study under 12 months old is used as concluded (its gross rent ÷ today's SAFMR at its ZIP). An older study keeps its % of the SAFMR on its study date, which moves the conclusion with SAFMR growth since then. Either rule can be applied to all studies.</li>
       <li>A property with its own study uses that study first (its latest that passes the filters). Unit types it did not cover use its median.</li>
-      <li>Where a study gives no utility allowance, the property's current HUD allowance for that bedroom count is added to get gross rent (marked "HUD"). Where it states its conclusions already include all utilities, the conclusion is the gross rent.</li>
-      <li>With no study in range, the property gets no estimate unless you choose the statewide % (the slider; it starts at the median of all studies, ${pct(M.calibration.median)}).</li></ul>
+      <li>Where a study gives no utility allowance, the property's current HUD allowance for that bedroom count is added to get gross rent (marked "HUD"); if the property has none, the median HUD allowance for that bedroom count in its county (else its state) is used (marked "area"). Where it states its conclusions already include all utilities, the conclusion is the gross rent.</li>
+      <li>With no study in range, the property gets no estimate unless you choose the ${FB.toLowerCase()} % (the slider; it starts at the median of ${POOL === HOME ? `the ${esc(SN)} studies` : 'all the studies loaded, because this state has fewer than 5'}, ${pct(calib('all').med)}).</li></ul>
     <h3>3. The screen</h3>
     <ul><li>Estimated market gross = market % × the FY2027 SAFMR (effective ${esc(M.safmr_vintages[M.safmr_vintages.length - 1].eff)}) for the property's ZIP and bedroom count.</li>
       <li>Estimated market rent = that minus the line's current utility allowance. Gap = estimated market rent − current contract rent. Annual uplift = gap × units × 12, summed over the property's included lines (lines above the estimate count as negatives).</li>
@@ -646,13 +698,13 @@ function start(D) {
     <p>SAFMR is HUD's 40th-percentile rent standard, not a comparable-rent conclusion, and a study a few miles away may cover a different product. Whether a contract's rents can actually move depends on HUD's renewal rules: the contract type (HAP vs budget-based PRAC, PAC or RAC), the renewal option, timing and an actual rent comparability study.</p>
     <h3>Sources</h3>
     <p>HUD Multifamily contract rents and utility allowances (${esc(M.hud.name)}, as of ${esc(M.hud.asof)}); HUD FY2019–FY2027 Small Area FMR files; rent studies in the Rent Grid Library. Built ${esc(M.built)}.
-      ${P.length.toLocaleString()} California HUD properties with rent lines, ${M.lines.toLocaleString()} rent lines.</p>`;
+      ${P.length.toLocaleString()} ${esc(SN)} HUD properties with rent lines, ${M.lines.toLocaleString()} rent lines.</p>`;
   $('#aboutBtn').addEventListener('click', () => $('#about').showModal());
 
   /* ---------- go ---------- */
   syncControls();
   refresh();
-  map.fitBounds(L.latLngBounds(P.map(p => [p.lat, p.lon])), { padding: [10, 10] });
+  map.fitBounds(L.latLngBounds(P.filter(p => p.lat != null).map(p => [p.lat, p.lon])), { padding: [10, 10] });
   const fromHash = () => {
     const m = /sel=(\w+)/.exec(location.hash), p0 = m && pById.get(m[1]);
     if (p0 && p0.id !== S.sel) { map.setView([p0.lat, p0.lon], 13); select(p0, false); }

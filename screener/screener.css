@@ -1,4 +1,4 @@
-/* /CA additions on top of ../assets/app.css */
+/* Rent screener additions on top of ../assets/app.css */
 .gate { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 6000; padding: 16px; }
 .gate form { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 22px 24px; width: min(360px, 100%); box-shadow: 0 8px 30px rgba(0,0,0,.08); }
 .gate h1 { font-size: 17px; margin: 0 0 2px; }
@@ -47,3 +47,6 @@ dialog ul { padding-left: 18px; }
 .reftip { font-size: 11px; padding: 2px 6px; border-color: #1f4e99; }
 .leaflet-tooltip.reftip::before { border-right-color: #1f4e99; }
 .dt .link { text-align: left; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.top .stateSel { font-size: 13px; padding: 3px 6px; border: 1px solid #cfd4dc; border-radius: 6px; background: #fff; color: #14213d; max-width: 170px; }
+.gate select.stateSel { width: 100%; border: 1px solid #cfd4dc; border-radius: 6px; padding: 7px 9px; margin-bottom: 10px; background: #fff; }
