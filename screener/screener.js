@@ -1,6 +1,6 @@
-/* Rent screener, one state at a time: rent-study (RCS) conclusions vs HUD Small Area FMRs, and an estimate of market rent
-   for every HUD rent line in the state from the rent studies near it (including studies just across the state line).
-   Each state's data file (data/<ST>.enc.js) is encrypted; nothing renders until the password unlocks it. */
+/* Rent screener, one state at a time or the whole country (?st=US): rent-study (RCS) conclusions vs HUD Small Area FMRs,
+   and an estimate of market rent for every HUD rent line from the rent studies near it (including studies just across the
+   state line). Each data file (data/<ST>.enc.js, data/US.enc.js) is encrypted; nothing renders until the password unlocks it. */
 (function () {
 'use strict';
 const $ = (s, el = document) => el.querySelector(s);
@@ -35,7 +35,7 @@ const STATES = window.RS_STATES || [];
 const stName = Object.fromEntries(STATES);
 let ST = (new URLSearchParams(location.search).get('st') || store.get('rsState') || 'CA').toUpperCase();
 if (!stName[ST]) ST = 'CA';
-const fillStates = sel => { sel.innerHTML = STATES.map(([c, n]) => `<option value="${c}">${esc(n)}</option>`).join(''); sel.value = ST; };
+const fillStates = sel => { sel.innerHTML = STATES.map(([c, n]) => `<option value="${c}">${esc(c === 'US' ? 'United States (all states)' : n)}</option>`).join(''); sel.value = ST; };
 function setState(c) {
   ST = c; store.set('rsState', c);
   document.title = `${stName[c]} Rent Screener`;
@@ -83,7 +83,9 @@ if (savedPw) unlock(savedPw, true); else pwIn.focus();
 
 /* ---------- app ---------- */
 function start(D) {
-  const M = D.meta, P = D.props, RCS = D.rcs, SAF = D.safmr, SN = stName[ST];
+  const NAT = ST === 'US';   // the national file: every state at once
+  const M = D.meta, P = D.props, RCS = D.rcs, SAF = D.safmr, SN = NAT ? 'U.S.' : stName[ST];
+  const RMAX = NAT ? 150 : 500;   // studies are searched this far; the national file has no state-line limit, so it stops at 150 miles
   const pById = new Map(P.map(p => [p.id, p]));
   // Properties in other states that have a study near this state's properties: location and name only.
   const spById = new Map((D.sprops || []).map(p => [p.id, Object.assign(p, { cons: [], lines: [], away: true, county: titleCase(p.county), city: titleCase(p.city),
@@ -92,8 +94,8 @@ function start(D) {
   const addMonths = n => { const d = new Date(); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
   const yearAgo = addMonths(-12);
   for (const p of P) {
-    p.state = ST; p.county = titleCase(p.county); p.city = titleCase(p.city);
-    p.hay = [p.name, p.addr, p.city, p.zip, p.county, p.owner, p.mgmt, p.id].join(' ').toLowerCase();
+    p.state = NAT ? p.st : ST; p.county = titleCase(p.county); p.city = titleCase(p.city);
+    p.hay = [p.name, p.addr, p.city, p.zip, p.county, p.owner, p.mgmt, p.id, ...(NAT ? [p.state, stName[p.state]] : [])].join(' ').toLowerCase();
   }
   // One entry per property and firm (that firm's latest study there), newest first; p.rcs = the property's latest from any firm.
   for (const r of RCS) {
@@ -109,7 +111,18 @@ function start(D) {
     const h = Math.sin(dp / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dl / 2) ** 2;
     return 2 * R_EARTH * Math.asin(Math.sqrt(h));
   };
-  for (const p of P) p.near = RCS.filter(r => r.p !== p).map(r => ({ r, d: dist(p, r.p) })).filter(o => o.d <= 500).sort((a, b) => a.d - b.d);
+  // Studies sorted by latitude, so each property only measures the ones in its latitude band; with none within RMAX, the nearest one.
+  const byLat = RCS.slice().sort((a, b) => a.p.lat - b.p.lat), lats = byLat.map(r => r.p.lat), band = RMAX / 69 + 0.05;
+  const firstAt = v => { let lo = 0, hi = lats.length; while (lo < hi) { const m = (lo + hi) >> 1; if (lats[m] < v) lo = m + 1; else hi = m; } return lo; };
+  for (const p of P) {
+    const near = [];
+    for (let i = firstAt(p.lat - band); i < byLat.length && lats[i] <= p.lat + band; i++) {
+      const r = byLat[i]; if (r.p === p) continue;
+      const d = dist(p, r.p); if (d <= RMAX) near.push({ r, d });
+    }
+    if (!near.length) { let best = null; for (const r of RCS) if (r.p !== p) { const d = dist(p, r.p); if (!best || d < best.d) best = { r, d }; } if (best) near.push(best); }
+    p.near = near.sort((a, b) => a.d - b.d);
+  }
   const zipProps = {};
   for (const p of P) (zipProps[p.zip] = zipProps[p.zip] || []).push(p);
 
@@ -123,7 +136,7 @@ function start(D) {
   };
   // The fallback % and the calibration tables use this state's own studies (all loaded studies if it has fewer than 5).
   const HOME = RCS.filter(r => !r.p.away);
-  const POOL = HOME.filter(r => ok(r.ratio)).length >= 5 ? HOME : RCS, FB = POOL === HOME ? 'Statewide' : 'Regional';
+  const POOL = HOME.filter(r => ok(r.ratio)).length >= 5 ? HOME : RCS, FB = NAT ? 'National' : POOL === HOME ? 'Statewide' : 'Regional';
   const firmN = {};
   for (const r of RCS) firmN[r.firm] = (firmN[r.firm] || 0) + 1;
   const FIRMS = Object.keys(firmN).sort((a, b) => firmN[b] - firmN[a] || a.localeCompare(b));
@@ -147,7 +160,7 @@ function start(D) {
     docCount[d] = (docCount[d] || 0) + 1; ropCount[r] = (ropCount[r] || 0) + 1; ropLabel[r] = c.ropt ? c.ropt.split(': ').slice(1).join(': ') : 'No renewal option on file';
   }
   const ROPTS = Object.keys(ropCount).sort((a, b) => (a === '—') - (b === '—') || a.localeCompare(b));
-  const DEF = () => ({ q: '', county: '', radius: 5, combine: 'idw', cal: 'all', bedMatch: true, useOwn: true, rcsMode: 'auto',
+  const DEF = () => ({ q: '', stf: '', county: '', radius: 5, combine: 'idw', cal: 'all', bedMatch: true, useOwn: true, rcsMode: 'auto',
     fallback: 'none', ratio: Math.round(calib('all').med * 100), fee: 5, firms: new Set(FIRMS),
     docs: new Set(['HAP']), ropts: new Set(ROPTS), oldCons: false, exp: '', minUnits: '', minGap: '', minAnnual: '', rcsOnly: false, showNoEst: false });
   const S = Object.assign(DEF(), { view: 'props', sel: null, limit: 300,
@@ -223,6 +236,7 @@ function start(D) {
     const q = S.q.trim().toLowerCase(), cut = S.exp ? addMonths(+S.exp) : null;
     OUT = []; LINES = []; COV = { n: 0, est: 0, hidden: 0 }; REACH = {};
     for (const p of P) {
+      if (S.stf && p.state !== S.stf) continue;
       if (S.county && p.county !== S.county) continue;
       if (S.rcsOnly && !p.rcs) continue;
       if (q && !p.hay.includes(q)) continue;
@@ -261,6 +275,7 @@ function start(D) {
     for (const r of RCS) {
       const p = r.p;
       if (!S.firms.has(r.firm)) continue;
+      if (S.stf && p.state !== S.stf) continue;
       if (S.county && p.county !== S.county) continue;
       if (q && !p.hay.includes(q)) continue;
       for (const x of r.asis) RROWS.push({ p, r, x, now: hudNow(p, x.bed) });
@@ -269,6 +284,7 @@ function start(D) {
     for (const z in SAF) {
       const a = SAF[z], ps = zipProps[z] || [];
       if (q && !(z.includes(q) || a[0].toLowerCase().includes(q) || ps.some(p => p.hay.includes(q)))) continue;
+      if (S.stf && a[12] !== S.stf) continue;
       if (S.county && !ps.some(p => p.county === S.county)) continue;
       ZROWS.push({ z, a, ps });
     }
@@ -287,7 +303,7 @@ function start(D) {
   const VIEWS = {
     props: { rows: () => OUT, pid: r => r.p.id, cols: [
       C('name', 'Property', r => r.p.name, { f: r => `<b>${esc(r.p.name)}</b>${studyBadge(r.p)}` }),
-      C('city', 'City', r => r.p.city), C('county', 'County', r => r.p.county),
+      C('city', 'City', r => r.p.city), ...(NAT ? [C('st', 'State', r => r.p.state)] : []), C('county', 'County', r => r.p.county),
       C('units', 'Units', r => r.units, { num: 1, f: r => int(r.units), tip: 'Units on the included rent lines' }),
       C('rent', 'Avg contract rent', r => r.rent, { num: 1, f: r => money(r.rent) }),
       C('curPct', 'Gross % SAFMR', r => r.curPct, { num: 1, f: r => pct(r.curPct), tip: 'Current contract rent + utility allowance, as % of the FY2027 SAFMR (unit-weighted)' }),
@@ -307,7 +323,7 @@ function start(D) {
     ] },
     lines: { rows: () => LINES, pid: r => r.p.id, cols: [
       C('name', 'Property', r => r.p.name, { f: r => `<b>${esc(r.p.name)}</b>${studyBadge(r.p)}` }),
-      C('city', 'City', r => r.p.city),
+      C('city', 'City', r => r.p.city), ...(NAT ? [C('st', 'State', r => r.p.state)] : []),
       C('bed', 'BR', r => r.ln.bed, { f: r => bedName(r.ln.bed) }),
       C('units', 'Units', r => r.ln.units, { num: 1 }),
       C('rent', 'Contract rent', r => r.ln.rent, { num: 1, f: r => money(r.ln.rent) }),
@@ -349,7 +365,7 @@ function start(D) {
       C('zip', 'ZIP', r => r.r.zip),
     ] },
     safmr: { rows: () => ZROWS, pid: () => null, cols: [
-      C('zip', 'ZIP', r => r.z, { f: r => `<b>${esc(r.z)}</b>` }),
+      C('zip', 'ZIP', r => r.z, { f: r => `<b>${esc(r.z)}</b>` }), ...(NAT ? [C('st', 'State', r => r.a[12])] : []),
       C('area', 'HUD area', r => r.a[0], { f: r => esc(r.a[0]) + (r.a[11] > 1 ? ` <span class="est" title="This ZIP is split across ${r.a[11]} HUD areas; first one shown">+${r.a[11] - 1}</span>` : '') }),
       C('props', 'HUD props', r => r.ps.length, { num: 1 }),
       ...[0, 1, 2, 3, 4].map(b => C('s' + b, `FY27 ${bedName(b)}`, r => r.a[1 + b], { num: 1, f: r => money(r.a[1 + b]) })),
@@ -508,7 +524,7 @@ function start(D) {
       const nearest = p.near.find(o => studyOk(o.r));
       h += `<p class="note">No rent study within ${S.radius} miles${S.fallback === 'state' ? `, so the ${FB.toLowerCase()} ${S.ratio}% is used` : ''}.`;
       if (nearest) h += ` The nearest is <button class="link" data-goto="${esc(nearest.r.id)}">${esc(nearest.r.name)}</button>, ${mi(nearest.d)} miles away (${esc(nearest.r.firm)}, ${esc(nearest.r.date)}).
-        <button class="link" data-widen="${Math.ceil(nearest.d)}">Widen the radius to ${Math.ceil(nearest.d)} miles</button>`;
+        ${nearest.d <= RMAX ? `<button class="link" data-widen="${Math.ceil(nearest.d)}">Widen the radius to ${Math.ceil(nearest.d)} miles</button>` : `That is beyond the ${RMAX}-mile limit.`}`;
       return h + '</p>';
     }
     const how = { idw: 'averaged, closer studies counting more (weight = 1 ÷ distance)', median: 'combined by median', nearest: 'nearest study only' }[S.combine];
@@ -528,7 +544,7 @@ function start(D) {
     const row = OUT.find(r => r.p === p);
     const okc = p.cons.map(conOk);
     if (p.away) return renderAway(p);
-    let h = `<h2>${esc(p.name)}</h2><div class="muted">${p.addr ? esc(p.addr) + ', ' : ''}${esc(p.city)}, ${esc(ST)} ${esc(p.zip)}${p.county ? ` · ${esc(p.county)} County` : ''}</div>
+    let h = `<h2>${esc(p.name)}</h2><div class="muted">${p.addr ? esc(p.addr) + ', ' : ''}${esc(p.city)}, ${esc(p.state)} ${esc(p.zip)}${p.county ? ` · ${esc(p.county)} County` : ''}</div>
       ${p.nohud ? `<div class="callout muted">${esc(p.nohud)} Its rent study is loaded so estimates for nearby HUD properties can use it; it has no HUD contracts or rent lines.</div>`
         : `<p class="tiny"><a href="../#sel=${esc(p.id)}" target="_blank" rel="noopener">Open on the national map</a></p>`}
       <dl class="kv"><dt>HUD property ID</dt><dd>${p.nohud ? '–' : esc(p.id)}</dd><dt>Owner</dt><dd>${esc(p.owner || '–')}${p.ownerType ? ` <span class="muted">(${esc(p.ownerType)})</span>` : ''}</dd>
@@ -596,22 +612,41 @@ function start(D) {
   $('#detailBody').addEventListener('click', e => {
     const g = e.target.closest('[data-goto]'), w = e.target.closest('[data-widen]');
     if (g) { const p = pById.get(g.dataset.goto); if (p) select(p, false); }
-    if (w) { S.radius = +w.dataset.widen; syncControls(); refresh(); drawRing(); const p = pById.get(S.sel); if (p) select(p, false); }
+    if (w) { S.radius = Math.min(+w.dataset.widen, RMAX); syncControls(); refresh(); drawRing(); const p = pById.get(S.sel); if (p) select(p, false); }
   });
   $('#closeDetail').addEventListener('click', closeDetail);
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#about').open) closeDetail(); });
+  // The whole state, or in the national view the lower 48 (Alaska, Hawaii and Puerto Rico would zoom the map far out).
+  function fitHome() {
+    if (NAT && !S.stf) return map.fitBounds([[24.5, -124.8], [49.4, -66.9]]);
+    const pts = P.filter(p => p.lat != null && (!S.stf || p.state === S.stf)).map(p => [p.lat, p.lon]);
+    if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [10, 10] });
+  }
   function closeDetail() { $('#detail').hidden = true; S.sel = null; history.replaceState(null, '', location.pathname + location.search); $$('#ctbl tbody tr.sel').forEach(tr => tr.classList.remove('sel')); drawRing(); }
 
   /* ---------- controls ---------- */
-  const county = $('#county');
-  for (const c of [...new Set(P.map(p => p.county).filter(Boolean))].sort()) county.insertAdjacentHTML('beforeend', `<option>${esc(c)}</option>`);
+  const county = $('#county'), stateF = $('#stateF');
+  // County names repeat across states, so in the national view the County list waits for a state.
+  function fillCounties() {
+    county.innerHTML = `<option value="">${NAT && !S.stf ? 'Pick a state first' : 'All counties'}</option>`;
+    county.disabled = NAT && !S.stf;
+    for (const c of [...new Set(P.filter(p => !NAT || p.state === S.stf).map(p => p.county).filter(Boolean))].sort()) county.insertAdjacentHTML('beforeend', `<option>${esc(c)}</option>`);
+  }
+  if (NAT) {
+    $('#stateFRow').hidden = false;
+    for (const c of [...new Set(P.map(p => p.state))].sort((a, b) => (stName[a] || a).localeCompare(stName[b] || b)))
+      stateF.insertAdjacentHTML('beforeend', `<option value="${esc(c)}">${esc(stName[c] || c)}</option>`);
+  }
+  $('#radius').max = RMAX;
   const calSel = $('#cal');
   for (const k in CAL) calSel.insertAdjacentHTML('beforeend', `<option value="${esc(k)}">${esc(CAL[k][0])} (${RCS.filter(CAL[k][1]).length})</option>`);
-  $('#fallback option[value="state"]').textContent = FB === 'Statewide' ? 'Use a statewide %' : 'Use a % from the studies loaded (this state has fewer than 5)';
+  $('#fallback option[value="state"]').textContent = FB === 'National' ? 'Use a national %' : FB === 'Statewide' ? 'Use a statewide %' : 'Use a % from the studies loaded (this state has fewer than 5)';
   $('#f-doc').innerHTML = DOCS.filter(d => docCount[d]).map(d => `<label class="chk"><input type="checkbox" data-doc="${d}"> ${d === '—' ? 'No contract type on file' : d}<span class="n">${docCount[d]}</span></label>`).join('');
   $('#f-firm').innerHTML = FIRMS.map(f => `<label class="chk"><input type="checkbox" data-firm="${esc(f)}"> ${esc(f)}<span class="n">${firmN[f]}</span></label>`).join('');
   $('#f-ropt').innerHTML = ROPTS.map(r => `<label class="chk"><input type="checkbox" data-ropt="${esc(r)}"> <span><b>${esc(r)}</b> ${esc(ropLabel[r])}</span><span class="n">${ropCount[r]}</span></label>`).join('');
   function syncControls() {
+    if (NAT) stateF.value = S.stf;
+    fillCounties();
     $('#q').value = S.q; county.value = S.county; $('#radius').value = S.radius; $('#combine').value = S.combine; calSel.value = S.cal;
     $('#bedMatch').checked = S.bedMatch; $('#useOwn').checked = S.useOwn; $('#rcsMode').value = S.rcsMode; $('#fallback').value = S.fallback;
     $('#stateBox').hidden = S.fallback !== 'state'; $('#ratio').value = S.ratio; $('#fee').value = S.fee;
@@ -640,7 +675,8 @@ function start(D) {
   let qT;
   $('#q').addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value; refresh(); }, 180); });
   county.addEventListener('change', () => { S.county = county.value; refresh(); });
-  $('#radius').addEventListener('change', e => { const v = +e.target.value; if (v > 0) { S.radius = v; refresh(); } else syncControls(); });
+  stateF.addEventListener('change', () => { S.stf = stateF.value; S.county = ''; syncControls(); refresh(); fitHome(); });
+  $('#radius').addEventListener('change', e => { const v = +e.target.value; if (v > 0) { S.radius = Math.min(v, RMAX); syncControls(); refresh(); } else syncControls(); });
   $$('[data-r]').forEach(b => b.addEventListener('click', () => { S.radius = +b.dataset.r; syncControls(); refresh(); }));
   $('#ratio').addEventListener('input', e => { S.ratio = +e.target.value; $('#ratioVal').textContent = S.ratio + '%'; clearTimeout(qT); qT = setTimeout(refresh, 60); });
   $$('[data-q]').forEach(b => b.addEventListener('click', () => { const v = calib('all')[b.dataset.q]; if (ok(v)) { S.ratio = Math.round(v * 100); syncControls(); refresh(); } }));
@@ -655,7 +691,7 @@ function start(D) {
   $('[data-none="firm"]').addEventListener('click', () => { S.firms = new Set(); syncControls(); refresh(); });
   $('[data-all="ropt"]').addEventListener('click', () => { S.ropts = new Set(ROPTS); syncControls(); refresh(); });
   $('[data-none="ropt"]').addEventListener('click', () => { S.ropts = new Set(); syncControls(); refresh(); });
-  $('#resetAll').addEventListener('click', () => { Object.assign(S, DEF()); syncControls(); refresh(); });
+  $('#resetAll').addEventListener('click', () => { const f = S.stf; Object.assign(S, DEF()); syncControls(); refresh(); if (f) fitHome(); });
   function setView(v) { S.view = v; $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === v)); }
   $$('.tab').forEach(t => t.addEventListener('click', () => { setView(t.dataset.view); S.limit = 300; renderTable(); drawMarkers(); }));
   $('#filtersBtn').addEventListener('click', () => document.body.classList.toggle('filters-open'));
@@ -689,6 +725,7 @@ function start(D) {
       <li>"Bring studies to today": a study under 12 months old is used as concluded (its gross rent ÷ today's SAFMR at its ZIP). An older study keeps its % of the SAFMR on its study date, which moves the conclusion with SAFMR growth since then. Either rule can be applied to all studies.</li>
       <li>A property with its own study uses that study first (its latest that passes the filters). Unit types it did not cover use its median.</li>
       <li>Where a study gives no utility allowance, the property's current HUD allowance for that bedroom count is added to get gross rent (marked "HUD"); if the property has none, the median HUD allowance for that bedroom count in its county (else its state) is used (marked "area"). Where it states its conclusions already include all utilities, the conclusion is the gross rent.</li>
+      ${NAT ? `<li>This national view searches for studies up to ${RMAX} miles away, so the radius stops at ${RMAX} miles. At any radius up to that, a property gets the same estimate here as on its state's page.</li>` : ''}
       <li>With no study in range, the property gets no estimate unless you choose the ${FB.toLowerCase()} % (the slider; it starts at the median of ${POOL === HOME ? `the ${esc(SN)} studies` : 'all the studies loaded, because this state has fewer than 5'}, ${pct(calib('all').med)}).</li></ul>
     <h3>3. The screen</h3>
     <ul><li>Estimated market gross = market % × the FY2027 SAFMR (effective ${esc(M.safmr_vintages[M.safmr_vintages.length - 1].eff)}) for the property's ZIP and bedroom count.</li>
@@ -704,7 +741,7 @@ function start(D) {
   /* ---------- go ---------- */
   syncControls();
   refresh();
-  map.fitBounds(L.latLngBounds(P.filter(p => p.lat != null).map(p => [p.lat, p.lon])), { padding: [10, 10] });
+  fitHome();
   const fromHash = () => {
     const m = /sel=(\w+)/.exec(location.hash), p0 = m && pById.get(m[1]);
     if (p0 && p0.id !== S.sel) { map.setView([p0.lat, p0.lon], 13); select(p0, false); }

@@ -7,7 +7,7 @@
 <title>Rent Screener</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="../assets/app.css">
-<link rel="stylesheet" href="screener.css?v=2">
+<link rel="stylesheet" href="screener.css?v=3">
 </head>
 <body>
 <div id="gate" class="gate">
@@ -36,6 +36,7 @@
     <section class="block">
       <label class="lbl" for="q">Search a property, city, ZIP, owner or HUD ID</label>
       <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Property, city, ZIP, owner or HUD ID">
+      <div class="row gap mt" id="stateFRow" hidden><label class="lbl inline" for="stateF">State</label><select id="stateF"><option value="">All states</option></select></div>
       <div class="row gap mt"><label class="lbl inline" for="county">County</label><select id="county"><option value="">All counties</option></select></div>
     </section>
 
@@ -126,7 +127,7 @@
 <dialog id="about"><div id="aboutBody"></div><form method="dialog"><button class="btn">Close</button></form></dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="states.js?v=2"></script>
-<script src="screener.js?v=4"></script>
+<script src="states.js?v=3"></script>
+<script src="screener.js?v=5"></script>
 </body>
 </html>
