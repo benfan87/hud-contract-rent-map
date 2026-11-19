@@ -11,6 +11,15 @@ code { font-size: 12px; background: #eef1f5; padding: 0 3px; border-radius: 3px;
 .top { height: 44px; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: #14213d; color: #fff; }
 .brand { font-weight: 650; font-size: 15px; }
 .asof { color: #c7cfdd; font-size: 12px; flex: 1; }
+.top .prop { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border: 1px solid #c7dcff; border-radius: 999px; color: #fff; font-size: 12.5px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.top .prop:hover { background: #c7dcff; color: #14213d; }
+.top .prop:focus-visible { outline: 2px solid #c7dcff; outline-offset: 2px; }
+@media (max-width: 600px) {
+  /* Small phones: the bar wraps to two rows instead of squeezing the links */
+  .top { height: auto; min-height: 44px; flex-wrap: wrap; row-gap: 6px; padding: 7px 12px; }
+  .top .link { white-space: nowrap; font-size: 12.5px; order: 2; }
+  .top .prop { margin-left: auto; order: 1; }
+}
 .top .link { color: #c7dcff; }
 
 .layout { display: grid; grid-template-columns: min(var(--side-w, 330px), 45vw) 6px minmax(0, 1fr); height: calc(100% - 44px); position: relative; }
