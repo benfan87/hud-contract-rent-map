@@ -93,7 +93,14 @@ function start(D) {
   const today = new Date().toISOString().slice(0, 10);
   const addMonths = n => { const d = new Date(); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
   const yearAgo = addMonths(-12);
+  // 2027 QCT / DDA membership (screener/zones.js, public): 1 = QCT, 2 = DDA
+  const ZN = window.RS_ZONES || null, ZQ = new Set(ZN ? ZN.qct : []), ZD = new Set(ZN ? ZN.dda : []);
+  const zoneOf = id => (ZQ.has(id) ? 1 : 0) | (ZD.has(id) ? 2 : 0);
+  const zoneTxt = z => [z & 1 ? 'QCT' : '', z & 2 ? 'DDA' : ''].filter(Boolean).join(', ');
+  const ZONEF = { qct: z => z & 1, dda: z => z & 2, either: z => z > 0, both: z => z === 3, neither: z => !z };
+  const zoneOk = z => !S.zone || !ZN || !!ZONEF[S.zone](z);
   for (const p of P) {
+    p.zone = zoneOf(p.id);
     p.state = NAT ? p.st : ST; p.county = titleCase(p.county); p.city = titleCase(p.city);
     p.hay = [p.name, p.addr, p.city, p.zip, p.county, p.owner, p.mgmt, p.id, ...(NAT ? [p.state, stName[p.state]] : [])].join(' ').toLowerCase();
   }
@@ -162,7 +169,7 @@ function start(D) {
   const ROPTS = Object.keys(ropCount).sort((a, b) => (a === '—') - (b === '—') || a.localeCompare(b));
   const DEF = () => ({ q: '', stf: '', county: '', radius: 5, combine: 'idw', cal: 'all', bedMatch: true, useOwn: true, rcsMode: 'auto',
     fallback: 'none', ratio: Math.round(calib('all').med * 100), fee: 5, firms: new Set(FIRMS),
-    docs: new Set(['HAP']), ropts: new Set(ROPTS), oldCons: false, exp: '', minUnits: '', minGap: '', minAnnual: '', rcsOnly: false, showNoEst: false });
+    docs: new Set(['HAP']), ropts: new Set(ROPTS), oldCons: false, exp: '', minUnits: '', minGap: '', minAnnual: '', rcsOnly: false, showNoEst: false, zone: '' });
   const S = Object.assign(DEF(), { view: 'props', sel: null, limit: 300,
     sort: { props: { i: 'annual', d: -1 }, lines: { i: 'annual', d: -1 }, rcs: { i: 'date', d: -1 }, safmr: { i: 'props', d: -1 } } });
   let CALNOW = calib('all'), TOK = 0;
@@ -229,15 +236,16 @@ function start(D) {
 
   /* ---------- filtering ---------- */
   const conOk = c => (c.status || S.oldCons) && S.docs.has(c.doc || '—') && S.ropts.has(ropCode(c.ropt));
-  let OUT = [], LINES = [], RROWS = [], ZROWS = [], COV = { n: 0, est: 0, hidden: 0 }, REACH = {};
+  let OUT = [], NOEST = [], LINES = [], RROWS = [], ZROWS = [], COV = { n: 0, est: 0, hidden: 0 }, REACH = {};   // NOEST: matching properties with no estimate, mapped but not listed
   function build() {
     TOK++;
     CALNOW = calib(S.cal, S.firms);
     const q = S.q.trim().toLowerCase(), cut = S.exp ? addMonths(+S.exp) : null;
-    OUT = []; LINES = []; COV = { n: 0, est: 0, hidden: 0 }; REACH = {};
+    OUT = []; NOEST = []; LINES = []; COV = { n: 0, est: 0, hidden: 0 }; REACH = {};
     for (const p of P) {
       if (S.stf && p.state !== S.stf) continue;
       if (S.county && p.county !== S.county) continue;
+      if (!zoneOk(p.zone)) continue;
       if (S.rcsOnly && !p.rcs) continue;
       if (q && !p.hay.includes(q)) continue;
       const okc = p.cons.map(conOk), ls = p.lines.filter(ln => okc[ln.c]);
@@ -264,7 +272,7 @@ function start(D) {
       if (cut && !(row.next && row.next <= cut)) continue;
       if (ok(S.minUnits) && U < +S.minUnits) continue;
       COV.n++; if (est) COV.est++;
-      if (!est && !S.showNoEst) { COV.hidden++; continue; }
+      if (!est && !S.showNoEst) { COV.hidden++; if (!ok(S.minGap) && !ok(S.minAnnual)) NOEST.push(row); continue; }
       if (ok(S.minGap) && !(row.gapU >= +S.minGap)) continue;
       if (ok(S.minAnnual) && !(row.annual >= +S.minAnnual)) continue;
       OUT.push(row);
@@ -278,6 +286,7 @@ function start(D) {
       if (S.stf && p.state !== S.stf) continue;
       if (S.county && p.county !== S.county) continue;
       if (q && !p.hay.includes(q)) continue;
+      if (!zoneOk(p.zone ?? (p.zone = zoneOf(p.id)))) continue;
       for (const x of r.asis) RROWS.push({ p, r, x, now: hudNow(p, x.bed) });
     }
     ZROWS = [];
@@ -304,6 +313,7 @@ function start(D) {
     props: { rows: () => OUT, pid: r => r.p.id, cols: [
       C('name', 'Property', r => r.p.name, { f: r => `<b>${esc(r.p.name)}</b>${studyBadge(r.p)}` }),
       C('city', 'City', r => r.p.city), ...(NAT ? [C('st', 'State', r => r.p.state)] : []), C('county', 'County', r => r.p.county),
+      ...(ZN ? [C('zone', 'QCT/DDA', r => zoneTxt(r.p.zone), { tip: 'In a 2027 Qualified Census Tract and/or Difficult Development Area' })] : []),
       C('units', 'Units', r => r.units, { num: 1, f: r => int(r.units), tip: 'Units on the included rent lines' }),
       C('rent', 'Avg contract rent', r => r.rent, { num: 1, f: r => money(r.rent) }),
       C('curPct', 'Gross % SAFMR', r => r.curPct, { num: 1, f: r => pct(r.curPct), tip: 'Current contract rent + utility allowance, as % of the FY2027 SAFMR (unit-weighted)' }),
@@ -398,7 +408,7 @@ function start(D) {
     const em = $('#empty');
     em.hidden = rows.length > 0;
     em.innerHTML = COV.hidden && S.view !== 'rcs' && S.view !== 'safmr'
-      ? `<b>Nothing to show.</b> ${COV.hidden.toLocaleString()} matching properties have no rent study within ${S.radius} miles. Widen the radius, or turn on "Also list properties with no estimate".`
+      ? `<b>Nothing to show.</b> ${COV.hidden.toLocaleString()} matching properties have no rent study within ${S.radius} miles. They are the gray dots on the map. Widen the radius, or turn on "Also list properties with no estimate".`
       : '<b>Nothing matches.</b> Loosen a filter (contract type, renewal option, timing or gap) or clear the search.';
     $('#more').innerHTML = rows.length > S.limit ? `Showing ${S.limit.toLocaleString()} of ${rows.length.toLocaleString()} rows <button class="btn small" id="moreBtn">Show 300 more</button>` : '';
     renderSummary();
@@ -410,7 +420,7 @@ function start(D) {
       const n = OUT.filter(r => r.annual > 0).length;
       t = `${OUT.length.toLocaleString()} properties · ${LINES.length.toLocaleString()} rent lines · ${U.toLocaleString()} units · ${n.toLocaleString()} below the estimate, worth <b>${money(up)}/yr</b>` +
         (S.fee ? ` (fee at ${S.fee}%: ${money(up * S.fee / 100)}/yr)` : '') +
-        (COV.hidden ? ` · ${COV.hidden.toLocaleString()} more with no study within ${S.radius} mi not listed` : '');
+        (COV.hidden ? ` · ${COV.hidden.toLocaleString()} more with no study within ${S.radius} mi (gray on the map, not listed)` : '');
     } else if (S.view === 'rcs') {
       const ps = new Set(RROWS.map(r => r.p.id));
       const ns = new Set(RROWS.map(r => r.r)).size;
@@ -441,21 +451,128 @@ function start(D) {
   L.layerGroup([tiles('Canvas/World_Light_Gray_Base', 'Tiles &copy; Esri | HUD Multifamily'), tiles('Canvas/World_Light_Gray_Reference', '')]).addTo(map);
   map.createPane('reach').style.zIndex = 390;   // radius circle and study links sit under the dots
   const reachRenderer = L.svg({ pane: 'reach' });
-  const dots = L.layerGroup().addTo(map), ring = L.layerGroup().addTo(map), studyDots = L.layerGroup().addTo(map);
+  const dots = L.layerGroup().addTo(map), ring = L.layerGroup().addTo(map), studyDots = L.layerGroup().addTo(map), lihDots = L.layerGroup().addTo(map);
   const BANDS = [[500, '#0b5d27', '$500+'], [250, '#1a7f37', '$250–500'], [100, '#5cb270', '$100–250'], [0.5, '#b7dfc1', '$1–100']];
   const gapColor = g => { if (!ok(g)) return '#8b8f98'; for (const [v, c] of BANDS) if (g >= v) return c; return '#c2410c'; };
+  const LIHC = '#db2777';
+  const ZONE_STYLE = { qct: { color: '#7c3aed', fillColor: '#7c3aed' }, dda: { color: '#0d9488', fillColor: '#0d9488' } };
+  // Map layers that aren't screen filters, so "Reset all" leaves them alone.
+  const MAPOPT = { noEst: true, lih: false, qct: false, dda: false };
   const legend = L.control({ position: 'bottomright' });
-  legend.onAdd = () => {
-    const d = L.DomUtil.create('div', 'legend');
-    d.innerHTML = '<b>Gap per unit / month</b><br>' + BANDS.map(([, c, t]) => `<i style="background:${c}"></i>${t}`).join('<br>') +
+  let legendEl = null;
+  function renderLegend() {
+    if (!legendEl) return;
+    legendEl.innerHTML = '<b>Gap per unit / month</b><br>' + BANDS.map(([, c, t]) => `<i style="background:${c}"></i>${t}`).join('<br>') +
       '<br><i style="background:#c2410c"></i>At or above the estimate<br><i style="background:#8b8f98"></i>No estimate' +
-      '<br><i style="background:#fff;border:2.5px solid #111"></i>Rent study';
+      '<br><i style="background:#fff;border:2.5px solid #111"></i>Rent study' +
+      (MAPOPT.lih ? `<br><i style="background:${LIHC}"></i>LIHTC, not a HUD property<br><i style="background:#fff;border:2px solid ${LIHC}"></i>LIHTC at a HUD property` : '') +
+      (MAPOPT.qct ? `<br><i class="sq" style="background:${ZONE_STYLE.qct.color}"></i>2027 QCT` : '') +
+      (MAPOPT.dda ? `<br><i class="sq" style="background:${ZONE_STYLE.dda.color}"></i>2027 DDA` : '');
+  }
+  legend.onAdd = () => { legendEl = L.DomUtil.create('div', 'legend'); renderLegend(); return legendEl; };
+  legend.addTo(map);
+  const layersCtl = L.control({ position: 'topleft' });
+  layersCtl.onAdd = () => {
+    const d = L.DomUtil.create('div', 'legend mapopts');
+    d.innerHTML = `<b>On the map</b>
+      <label class="chk"><input type="checkbox" id="mNoEst"> HUD properties with no estimate <i style="background:#8b8f98"></i></label>
+      <label class="chk"><input type="checkbox" id="mLih"> LIHTC projects <i style="background:${LIHC}"></i></label>
+      <div id="lihNote" class="hint" hidden></div>
+      <label class="chk"><input type="checkbox" id="mQct"> 2027 QCTs <i class="sq" style="background:${ZONE_STYLE.qct.color}"></i></label>
+      <label class="chk"><input type="checkbox" id="mDda"> 2027 DDAs <i class="sq" style="background:${ZONE_STYLE.dda.color}"></i></label>
+      <div id="zoneNote" class="hint" hidden></div>`;
+    L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
     return d;
   };
-  legend.addTo(map);
+  layersCtl.addTo(map);
+  $('#mNoEst').checked = MAPOPT.noEst; $('#mLih').checked = MAPOPT.lih;
+  $('#mNoEst').addEventListener('change', e => { MAPOPT.noEst = e.target.checked; drawMarkers(); });
+  $('#mLih').addEventListener('change', e => { MAPOPT.lih = e.target.checked; renderLegend(); drawLih(); });
+
+  // 2027 QCT / DDA polygons: the main map's file (assets/qct_dda_2027.js), loaded the first time either is turned on.
+  map.createPane('zones').style.zIndex = 350;   // under the radius circle and the dots
+  const zoneRenderer = L.canvas({ pane: 'zones', padding: 0.5 });
+  const zoneLayers = { qct: L.layerGroup(), dda: L.layerGroup() };
+  let zonesLoad = null;
+  function loadZones() {
+    if (!zonesLoad) zonesLoad = new Promise((res, rej) => {
+      if (window.QCT_DDA_2027) return res();
+      const el = document.createElement('script'); el.src = '../assets/qct_dda_2027.js'; el.onload = res; el.onerror = rej; document.head.appendChild(el);
+    }).then(() => {
+      for (const k of ['qct', 'dda']) L.geoJSON(window.QCT_DDA_2027[k], { renderer: zoneRenderer, interactive: false,
+        style: { ...ZONE_STYLE[k], weight: 0.6, fillOpacity: 0.16 } }).addTo(zoneLayers[k]);
+    }).catch(err => { zonesLoad = null; throw err; });
+    return zonesLoad;
+  }
+  function setZoneLayer(k, on) {
+    MAPOPT[k] = on; renderLegend();
+    const note = $('#zoneNote');
+    if (!on) { map.removeLayer(zoneLayers[k]); if (!MAPOPT.qct && !MAPOPT.dda) note.hidden = true; return; }
+    note.hidden = false; note.textContent = 'Loading the 2027 QCT / DDA map…';
+    loadZones().then(() => {
+      if (MAPOPT[k]) zoneLayers[k].addTo(map);
+      note.textContent = 'HUD 2027 designations. Filter by them with "2027 QCT / DDA" at the top left.';
+    }).catch(() => { note.textContent = 'Could not load the QCT / DDA map. Try again.'; MAPOPT[k] = false; $(k === 'qct' ? '#mQct' : '#mDda').checked = false; renderLegend(); });
+  }
+  $('#mQct').addEventListener('change', e => setZoneLayer('qct', e.target.checked));
+  $('#mDda').addEventListener('change', e => setZoneLayer('dda', e.target.checked));
+
+  // LIHTC projects (public data, screener/lihtc.js from tools/build_screener_lihtc.py), loaded the first time the layer is turned on.
+  let LIH = null, lihLoad = null, lihKey = '';
+  function loadLih() {
+    if (!lihLoad) lihLoad = new Promise((res, rej) => {
+      const el = document.createElement('script'); el.src = `lihtc.js?v=${window.RS_BUILD || 1}`;
+      el.onload = () => (window.RS_LIHTC ? res(window.RS_LIHTC) : rej(new Error('empty'))); el.onerror = rej; document.head.appendChild(el);
+    }).catch(err => { lihLoad = null; throw err; });
+    return lihLoad;
+  }
+  function lihTip(q) {
+    const [, , name, city, st, units, liU, pis, cr, hud, approx, zone] = q;
+    const hp = hud && pById.get(hud);
+    return `<b>${esc(name)}</b> · ${esc(titleCase(city || ''))}, ${esc(st)}<br>LIHTC${liU ? ` · ${liU.toLocaleString()}${units ? ` of ${units.toLocaleString()}` : ''} units low-income` : units ? ` · ${units.toLocaleString()} units` : ''}` +
+      `${pis ? ` · placed in service ${pis}` : ''}${cr >= 0 ? ` · ${esc(LIH.cr[cr])}` : ''}` +
+      (hud ? `<br>HUD property ${esc(hud)}${hp ? ' (click to open)' : ', no rent lines in this screen'}` : '<br>Not matched to a HUD multifamily property') +
+      (zone ? `<br>2027 ${zoneTxt(zone)}` : '') + (approx ? '<br><i>Location approximate (ZIP centre)</i>' : '');
+  }
+  function drawLih() {
+    const note = $('#lihNote');
+    if (!MAPOPT.lih) { lihDots.clearLayers(); lihKey = ''; note.hidden = true; return; }
+    if (!LIH) {
+      note.hidden = false; note.textContent = 'Loading LIHTC projects…';
+      loadLih().then(d => { LIH = d; drawLih(); }).catch(() => { note.textContent = 'Could not load the LIHTC file. Try again.'; MAPOPT.lih = false; $('#mLih').checked = false; renderLegend(); });
+      return;
+    }
+    const st = NAT ? S.stf : ST, key = (st || 'all') + '|' + S.zone;
+    if (key === lihKey) return;
+    lihKey = key;
+    lihDots.clearLayers();
+    let n = 0, nHud = 0;
+    for (const q of LIH.P) {
+      if (st && q[4] !== st) continue;
+      if (!zoneOk(q[11])) continue;
+      const hud = q[9], hp = hud && pById.get(hud);
+      const m = hud
+        ? L.circleMarker([q[0], q[1]], { radius: 8.5, weight: 2, color: LIHC, fill: false })
+        : L.circleMarker([q[0], q[1]], { radius: 4, weight: 1, color: '#fff', fillColor: LIHC, fillOpacity: q[10] ? 0.45 : 0.85 });
+      m.bindTooltip(() => lihTip(q));
+      if (hp) m.on('click', () => select(hp, false));
+      lihDots.addLayer(m); m.bringToBack();   // same canvas as the HUD dots (a separate one would block their hover and clicks), drawn behind them
+      n++; if (hud) nHud++;
+    }
+    note.hidden = false;
+    note.textContent = `${n.toLocaleString()} LIHTC projects${st ? ` in ${stName[st] || st}` : ''}${S.zone && ZN ? ` (${$('#zone').selectedOptions[0].text.toLowerCase()})` : ''}: ${(n - nHud).toLocaleString()} not HUD properties, ${nHud.toLocaleString()} at HUD properties (ringed). HUD LIHTC database + state award lists.`;
+  }
   function drawMarkers() {
     dots.clearLayers(); studyDots.clearLayers();
     const byP = new Map(OUT.map(r => [r.p, r]));
+    // Matching properties with no study in range are drawn first (under the rest), so every property in the screen is on the map.
+    if (S.view !== 'rcs' && MAPOPT.noEst) for (const r of NOEST) {
+      const p = r.p;
+      const m = L.circleMarker([p.lat, p.lon], { radius: p.rcs ? 7 : 4.5, weight: p.rcs ? 2.5 : 1, color: p.rcs ? '#111' : '#fff', fillColor: '#8b8f98', fillOpacity: 0.85 });
+      m.bindTooltip(`${esc(p.name)} · no study within ${S.radius} mi`);
+      m.on('click', () => select(p, false));
+      dots.addLayer(m);
+    }
     const list = S.view === 'rcs' ? RCS.filter(r => RROWS.some(x => x.r === r)).map(r => byP.get(r.p) || { p: r.p, gapU: null }) : OUT;
     for (const r of list) {
       const p = r.p;
@@ -466,8 +583,9 @@ function start(D) {
       dots.addLayer(m);
     }
     // Every usable study stays visible as a ringed dot, even when its own property is filtered out of the list.
+    const grayP = new Set(S.view !== 'rcs' && MAPOPT.noEst ? NOEST.map(r => r.p) : []);
     if (S.view !== 'rcs') for (const r of RCS) {
-      if (byP.has(r.p) || !studyOk(r)) continue;
+      if (byP.has(r.p) || grayP.has(r.p) || !studyOk(r)) continue;
       const m = L.circleMarker([r.p.lat, r.p.lon], { radius: 6, weight: 2.5, color: '#111', fillColor: '#fff', fillOpacity: 0.9 });
       m.bindTooltip(`${esc(r.name)} · ${esc(r.firm)} rent study ${esc(r.date)}`);
       m.on('click', () => select(r.p, false));
@@ -549,7 +667,7 @@ function start(D) {
         : `<p class="tiny"><a href="../#sel=${esc(p.id)}" target="_blank" rel="noopener">Open on the national map</a></p>`}
       <dl class="kv"><dt>HUD property ID</dt><dd>${p.nohud ? '–' : esc(p.id)}</dd><dt>Owner</dt><dd>${esc(p.owner || '–')}${p.ownerType ? ` <span class="muted">(${esc(p.ownerType)})</span>` : ''}</dd>
       <dt>Management agent</dt><dd>${esc(p.mgmt || '–')}</dd><dt>Units (total / assisted)</dt><dd>${int(p.total)} / ${int(p.assisted)}</dd>
-      <dt>SAFMR area</dt><dd>${esc(p.area || 'ZIP not in the SAFMR file')}</dd></dl>`;
+      <dt>SAFMR area</dt><dd>${esc(p.area || 'ZIP not in the SAFMR file')}</dd>${ZN ? `<dt>2027 QCT / DDA</dt><dd>${zoneTxt(p.zone ?? zoneOf(p.id)) || 'Neither'}</dd>` : ''}</dl>`;
     if (row && row.est) h += `<div class="callout">Estimated gap <b class="${sgn(row.gapU)}">${money(row.gapU)}</b> per unit per month · <b class="${sgn(row.annual)}">${money(row.annual)}</b> a year on ${int(row.units)} units` +
       (S.fee && row.annual > 0 ? ` · fee at ${S.fee}%: <b>${money(feeOf(row.annual))}</b>/yr` : '') + `<div class="subnote">From: ${esc(row.basis)}. Changes with the settings on the left.</div></div>`;
     else if (row) h += `<div class="callout muted">No estimate: no usable rent study within ${S.radius} miles.</div>`;
@@ -651,7 +769,7 @@ function start(D) {
     $('#bedMatch').checked = S.bedMatch; $('#useOwn').checked = S.useOwn; $('#rcsMode').value = S.rcsMode; $('#fallback').value = S.fallback;
     $('#stateBox').hidden = S.fallback !== 'state'; $('#ratio').value = S.ratio; $('#fee').value = S.fee;
     $('#oldCons').checked = S.oldCons; $('#exp').value = S.exp; $('#minUnits').value = S.minUnits; $('#minGap').value = S.minGap; $('#minAnnual').value = S.minAnnual;
-    $('#rcsOnly').checked = S.rcsOnly; $('#showNoEst').checked = S.showNoEst;
+    $('#rcsOnly').checked = S.rcsOnly; $('#showNoEst').checked = S.showNoEst; $('#zone').value = S.zone;
     $$('[data-doc]').forEach(i => { i.checked = S.docs.has(i.dataset.doc); });
     $$('[data-ropt]').forEach(i => { i.checked = S.ropts.has(i.dataset.ropt); });
     $$('[data-firm]').forEach(i => { i.checked = S.firms.has(i.dataset.firm); });
@@ -671,7 +789,7 @@ function start(D) {
     $('#f-ropt-n').textContent = `${S.ropts.size} of ${ROPTS.length}`;
     $('#f-firm-n').textContent = S.firms.size === FIRMS.length ? `all ${FIRMS.length}` : `${S.firms.size} of ${FIRMS.length}`;
   }
-  function refresh() { S.limit = 300; build(); renderCal(); renderTable(); drawMarkers(); if (S.sel && !$('#detail').hidden) renderDetail(pById.get(S.sel)); }
+  function refresh() { S.limit = 300; build(); renderCal(); renderTable(); drawMarkers(); drawLih(); if (S.sel && !$('#detail').hidden) renderDetail(pById.get(S.sel)); }
   let qT;
   $('#q').addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value; refresh(); }, 180); });
   county.addEventListener('change', () => { S.county = county.value; refresh(); });
@@ -683,7 +801,7 @@ function start(D) {
   const bind = (id, k, f = x => x) => $(id).addEventListener('change', e => { S[k] = f(e.target.type === 'checkbox' ? e.target.checked : e.target.value); syncControls(); refresh(); });
   bind('#combine', 'combine'); bind('#cal', 'cal'); bind('#bedMatch', 'bedMatch'); bind('#useOwn', 'useOwn'); bind('#rcsMode', 'rcsMode'); bind('#fallback', 'fallback');
   bind('#fee', 'fee', v => (ok(v) ? +v : 0)); bind('#oldCons', 'oldCons'); bind('#exp', 'exp');
-  bind('#minUnits', 'minUnits'); bind('#minGap', 'minGap'); bind('#minAnnual', 'minAnnual'); bind('#rcsOnly', 'rcsOnly'); bind('#showNoEst', 'showNoEst');
+  bind('#minUnits', 'minUnits'); bind('#minGap', 'minGap'); bind('#minAnnual', 'minAnnual'); bind('#rcsOnly', 'rcsOnly'); bind('#showNoEst', 'showNoEst'); bind('#zone', 'zone');
   $('#f-doc').addEventListener('change', e => { const d = e.target.dataset.doc; e.target.checked ? S.docs.add(d) : S.docs.delete(d); refresh(); });
   $('#f-ropt').addEventListener('change', e => { const r = e.target.dataset.ropt; e.target.checked ? S.ropts.add(r) : S.ropts.delete(r); refresh(); });
   $('#f-firm').addEventListener('change', e => { const f = e.target.dataset.firm; e.target.checked ? S.firms.add(f) : S.firms.delete(f); refresh(); });
