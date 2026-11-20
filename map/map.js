@@ -1,6 +1,6 @@
-/* HUD + LIHTC map: every located HUD multifamily property and every LIHTC project on one map, with the same layers,
-   search, area radius and detail panel as the rent screener (../screener/), minus the rent studies, estimates and
-   password. Data: ../screener/hud_all.js, ../screener/lihtc.js, ../screener/zones.js (public HUD data, not encrypted). */
+/* HUD + LIHTC map (lihtc.html at the site root): every located HUD multifamily property and every LIHTC project on
+   one map, with the same layers, search, area radius and detail panel as the rent screener (screener/), minus the rent
+   studies, estimates and password. Data: screener/hud_all.js, screener/lihtc.js, screener/zones.js (public HUD data). */
 (function () {
 'use strict';
 const $ = (s, el = document) => el.querySelector(s);
@@ -28,7 +28,8 @@ const loadJs = (src, key) => new Promise((res, rej) => {
   const el = document.createElement('script'); el.src = src;
   el.onload = () => (window[key] ? res(window[key]) : rej(new Error('empty'))); el.onerror = rej; document.head.appendChild(el);
 });
-Promise.all([loadJs('../screener/hud_all.js?v=1', 'RS_HUD'), loadJs('../screener/lihtc.js?v=1', 'RS_LIHTC')])
+// Paths are relative to lihtc.html at the site root (never '../'), so the map also works when another site proxies the folder.
+Promise.all([loadJs('screener/hud_all.js?v=2', 'RS_HUD'), loadJs('screener/lihtc.js?v=1', 'RS_LIHTC')])
   .then(([h, l]) => { start(h, l); $('#loading').remove(); })
   .catch(() => { $('#loading div').innerHTML = 'The HUD and LIHTC files did not load.<small>Check the connection and reload the page.</small>'; });
 
@@ -203,7 +204,7 @@ function start(HUD, LIH) {
   $('#mHud').addEventListener('change', e => { MAPOPT.hud = e.target.checked; renderLegend(); refresh(); });
   $('#mLih').addEventListener('change', e => { MAPOPT.lih = e.target.checked; renderLegend(); refresh(); });
 
-  // 2027 QCT / DDA polygons: the main map's file (../assets/qct_dda_2027.js), loaded the first time either is turned on.
+  // 2027 QCT / DDA polygons: the main map's file (assets/qct_dda_2027.js), loaded the first time either is turned on.
   map.createPane('zones').style.zIndex = 350;
   const zoneRenderer = L.canvas({ pane: 'zones', padding: 0.5 });
   const zoneLayers = { qct: L.layerGroup(), dda: L.layerGroup() };
@@ -211,7 +212,7 @@ function start(HUD, LIH) {
   function loadZones() {
     if (!zonesLoad) zonesLoad = new Promise((res, rej) => {
       if (window.QCT_DDA_2027) return res();
-      const el = document.createElement('script'); el.src = '../assets/qct_dda_2027.js'; el.onload = res; el.onerror = rej; document.head.appendChild(el);
+      const el = document.createElement('script'); el.src = 'assets/qct_dda_2027.js'; el.onload = res; el.onerror = rej; document.head.appendChild(el);
     }).then(() => {
       for (const k of ['qct', 'dda']) L.geoJSON(window.QCT_DDA_2027[k], { renderer: zoneRenderer, interactive: false, style: { ...ZONE_STYLE[k], weight: 0.6, fillOpacity: 0.16 } }).addTo(zoneLayers[k]);
     }).catch(err => { zonesLoad = null; throw err; });
@@ -292,7 +293,7 @@ function start(HUD, LIH) {
     const at = e.pin ? `${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}` : where || `${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}`;
     let x = `<h2>${esc(e.name)} ${kindBadges(e)}</h2><div class="muted">${esc(at)}${e.county ? ` · ${esc(e.county)} County` : ''}</div>`;
     const links = [];
-    if (e.hud && e.id) links.push(`<a href="../#sel=${esc(e.id)}" target="_blank" rel="noopener">Open on the contract rent map</a> <span class="muted">(contracts, rents by bedroom, owner contacts, financing)</span>`);
+    if (e.hud && e.id) links.push(`<a href="index.html#sel=${esc(e.id)}" target="_blank" rel="noopener">Open on the contract rent map</a> <span class="muted">(contracts, rents by bedroom, owner contacts, financing)</span>`);
     if (!e.pin) links.push(`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(where || `${e.lat},${e.lon}`)}" target="_blank" rel="noopener">Google Maps</a>`);
     if (links.length) x += `<p class="links">${links.join(' · ')}</p>`;
     x += '<dl class="kv">';
@@ -487,7 +488,7 @@ function start(HUD, LIH) {
   $('#aboutBody').innerHTML = `<h2>About the data</h2>
     <p>One map of every located HUD multifamily property and every LIHTC project, from public HUD data. It is the same map as the rent screener without the rent studies: no password, and nothing proprietary.</p>
     <h3>HUD multifamily properties (slate dots)</h3>
-    <ul><li>${nHud.toLocaleString()} properties from HUD's Multifamily Assistance &amp; Section 8 contract, property and active-portfolio files (published ${esc(HUD.meta.hud_built.slice(0, 10))}), with the owner entity, management agent, unit counts, HUD property category, active contract types and the earliest current-term and overall contract expirations. ${HUD.meta.unlocated_left_out.toLocaleString()} property IDs with no usable location are left out; they are searchable on the <a href="../">contract rent map</a>.</li>
+    <ul><li>${nHud.toLocaleString()} properties from HUD's Multifamily Assistance &amp; Section 8 contract, property and active-portfolio files (published ${esc(HUD.meta.hud_built.slice(0, 10))}), with the owner entity, management agent, unit counts, HUD property category, active contract types and the earliest current-term and overall contract expirations. ${HUD.meta.unlocated_left_out.toLocaleString()} property IDs with no usable location are left out; they are searchable on the <a href="index.html">contract rent map</a>.</li>
       <li>Coordinates come from HUD's <i>Multifamily Properties - Assisted</i> GIS layer; properties it does not locate are placed at their ZIP centroid and drawn hollow ("approximate").</li>
       <li>Click "Open on the contract rent map" in a property's panel for its contracts, rents by bedroom, utility allowances, owner contacts, FHA financing and LIHTC match details.</li></ul>
     <h3>LIHTC projects (pink dots)</h3>
