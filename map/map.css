@@ -1,0 +1,9 @@
+/* HUD + LIHTC map: the screener's look (../screener/screener.css) without the gate or the estimate controls */
+.gate { display: none; }
+#filtersBlock select, #filtersBlock input[type=number] { max-width: 100%; }
+#type { width: 100%; }
+.detail .links { font-size: 12px; margin: 2px 0 6px; }
+.callout .btn { margin-top: 6px; }
+.b.pin { background: #1f4e99; }
+.legend i.ring { background: #fff !important; border: 2px solid #db2777; }
+.legend i.approx { background: #fff !important; border: 2px dashed var(--muted); }

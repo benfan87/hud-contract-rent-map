@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD + LIHTC Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="../assets/app.css?v=2">
+<link rel="stylesheet" href="../screener/screener.css?v=5">
+<link rel="stylesheet" href="map.css?v=1">
+</head>
+<body>
+<header class="top">
+  <div class="brand">HUD + LIHTC Map</div>
+  <div class="asof" id="asof">Loading…</div>
+  <a class="link" href="../">Contract rent map</a>
+  <button class="link" id="aboutBtn">About the data</button>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <section class="block">
+      <label class="lbl" for="q">Find any HUD property, LIHTC project, address or ZIP</label>
+      <div class="searchwrap">
+        <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="e.g. Tanner Manor · 85040 · Phoenix AZ · 800000962">
+        <div id="sugg" class="sugg" hidden></div>
+      </div>
+      <div class="row gap">
+        <button id="pinBtn" class="btn" title="Click the map to set the center of the area">Drop a pin</button>
+        <button id="clearCtr" class="btn ghost">Clear area</button>
+      </div>
+      <div id="ctrInfo" class="center-info muted">No area set. Pick a search result or drop a pin to list everything within the radius.</div>
+      <label class="lbl mt" for="radius">Radius</label>
+      <div class="row gap"><input id="radius" class="w60" type="number" min="0.5" max="500" step="0.5" value="5"><span>miles</span>
+        <span class="tiny muted">· <button class="link" data-r="1">1</button> · <button class="link" data-r="3">3</button> · <button class="link" data-r="5">5</button> · <button class="link" data-r="10">10</button> · <button class="link" data-r="25">25</button></span></div>
+    </section>
+
+    <section class="block" id="filtersBlock">
+      <div class="block-head"><span>Filters</span><button class="link" id="resetAll">Reset all</button></div>
+      <div class="row gap mt"><label class="lbl inline" for="type">Show</label>
+        <select id="type">
+          <option value="any">HUD properties and LIHTC projects</option>
+          <option value="hud">HUD properties only</option>
+          <option value="lih">LIHTC projects only</option>
+          <option value="lihHud">LIHTC projects at a HUD property</option>
+          <option value="lihOnly">LIHTC projects that are not HUD properties</option>
+          <option value="hudNoLih">HUD properties with no LIHTC match</option>
+        </select></div>
+      <p class="hint">The checkboxes on the map ("On the map", top left) also switch each layer on and off.</p>
+      <div class="row gap mt"><label class="lbl inline" for="stateF">State</label><select id="stateF"><option value="">All states</option></select></div>
+      <div class="row gap mt"><label class="lbl inline" for="county">County</label><select id="county"><option value="">All counties</option></select></div>
+      <div class="row gap mt"><label class="lbl inline" for="zone">2027 QCT / DDA</label>
+        <select id="zone"><option value="">Any location</option><option value="qct">In a QCT</option><option value="dda">In a DDA</option><option value="either">In a QCT or a DDA</option><option value="both">In both</option><option value="neither">In neither</option></select></div>
+      <div class="row gap mt"><label class="lbl inline" for="minUnits">Units at least</label><input id="minUnits" type="number" min="0" placeholder="any"></div>
+      <div class="row gap mt"><label class="lbl inline">LIHTC placed in service</label>
+        <input id="pisMin" type="number" min="1986" max="2030" placeholder="from"><span>to</span><input id="pisMax" type="number" min="1986" max="2030" placeholder="to"></div>
+      <p class="hint">A placed-in-service range keeps only LIHTC projects with a year in it. HUD properties without a LIHTC match drop out.</p>
+      <label class="chk mt"><input type="checkbox" id="activeOnly"> Only HUD properties with an active contract</label>
+      <p class="hint">HUD's active Section 8 / PRAC / PAC / RAC contract list. LIHTC-only projects drop out.</p>
+      <div class="row gap mt"><label class="lbl inline" for="exp">HUD overall expiration</label>
+        <select id="exp"><option value="">Any time</option><option value="2">Within 2 years</option><option value="5">Within 5 years</option><option value="6">Within 6 years</option><option value="10">Within 10 years</option></select></div>
+    </section>
+
+    <section class="block" id="exportBlock">
+      <button class="btn" id="exportBtn">Download this tab (CSV)</button>
+      <p class="hint">Exports every row of the open tab, not just the rows shown.</p>
+    </section>
+  </aside>
+
+  <main class="main">
+    <div id="map" class="map"></div>
+    <div class="results">
+      <div class="results-head">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-view="near">Nearby</button>
+          <button class="tab" data-view="view">In view</button>
+        </div>
+        <div id="summary" class="summary"></div>
+        <button class="btn small mobile-only" id="filtersBtn">Filters</button>
+      </div>
+      <div class="tablewrap"><table id="ctbl"><thead></thead><tbody></tbody></table><div id="empty" class="empty" hidden></div></div>
+      <div id="more" class="more"></div>
+    </div>
+  </main>
+
+  <aside id="detail" class="detail" hidden>
+    <div class="detail-scroll">
+      <button class="close" id="closeDetail" aria-label="Close">×</button>
+      <div id="detailBody"></div>
+    </div>
+  </aside>
+</div>
+
+<dialog id="about"><div id="aboutBody"></div><form method="dialog"><button class="btn">Close</button></form></dialog>
+<div id="loading" class="loading"><div>Loading every HUD property and LIHTC project…<small>About 15 MB loads into your browser. The first visit can take 5–15 seconds; after that it's cached.</small></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="../screener/states.js?v=9"></script>
+<script src="../screener/zones.js?v=1"></script>
+<script src="map.js?v=1"></script>
+</body>
+</html>

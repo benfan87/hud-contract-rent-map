@@ -6,6 +6,11 @@ renewal option, contract start year and length, overall contract expiration year
 export the results to CSV. The Properties tab sorts by next current and next overall expiration and by "Owned since" (HUD's
 ownership effective date).
 
+**HUD + LIHTC map** (`map/`): every located HUD multifamily property and every LIHTC project on one map, with HUD / LIHTC /
+2027 QCT / DDA layer toggles, search, an area radius with a Nearby list, an In-view list, filters and CSV export. It is the
+rent screener's map without the rent studies or the password, built from the screener's public layer files
+(`screener/hud_all.js`, `screener/lihtc.js`, `screener/zones.js`; `python tools/build_screener_layers.py`).
+
 **Data:** HUD Multifamily Assistance & Section 8 Contracts, contract renewal, contract rent / utility allowance and
 property files (HUD publication of 2026-10-06, downloaded 2026-10-27), joined on HUD property ID and contract number.
 Coordinates come from HUD's *Multifamily Properties - Assisted* GIS layer; properties it does not locate are placed at
