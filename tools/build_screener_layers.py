@@ -108,6 +108,10 @@ D = H['dict']
 cons = {}
 for c in H['C']:
     cons.setdefault(c[0], []).append(c)
+# Owner group (likely sponsor, tools/merge_owners.py): owner entities sharing an organization's email domain, else a
+# mailing address. Label shown as "@domain" for email groups. Index into hout.sp, -1 = none.
+SPON = {r[0]: D['own'][r[1]][9] for r in H.get('OW', []) if r[1] >= 0 and D['own'][r[1]][9] is not None and D['own'][r[1]][9] >= 0}
+SP = [('@' + g[0]) if g[1] == 'email' else g[0] for g in D.get('spon', [])]
 hrows = []
 for i, p in enumerate(H['P']):
     if p[8] is None:
@@ -119,13 +123,14 @@ for i, p in enumerate(H['P']):
     ov = min((c[11] for c in act if c[11]), default=None)
     pc = D['propcat'][p[14]] if p[14] is not None and p[14] >= 0 else None
     hrows.append([p[0], round(p[8], 5), round(p[9], 5), p[1], p[2], p[3], p[4], p[5], p[6], p[12], p[13], p[15], p[16],
-                  0 if p[10] in ('R', '4', 'B', 'T') else 1, ', '.join(docs), len(act), nxt, ov, pc, ZONE.get(i, 0)])
+                  0 if p[10] in ('R', '4', 'B', 'T') else 1, ', '.join(docs), len(act), nxt, ov, pc, ZONE.get(i, 0), SPON.get(i, -1)])
 hout = {'meta': {'built': dt.date.today().isoformat(), 'hud_built': H['meta'].get('built'), 'properties': len(hrows),
                  'unlocated_left_out': len(H['P']) - len(hrows),
                  'cols': ['id', 'lat', 'lon', 'name', 'addr', 'city', 'st', 'zip', 'county', 'total units', 'assisted units', 'owner',
                           'management agent', 'approx (1 = ZIP / area centroid)', 'active contract doc types', 'active contracts',
-                          'earliest current-term end', 'earliest overall expiration', 'HUD property category', 'zone (1 = 2027 QCT, 2 = 2027 DDA)']},
-        'P': hrows}
+                          'earliest current-term end', 'earliest overall expiration', 'HUD property category', 'zone (1 = 2027 QCT, 2 = 2027 DDA)',
+                          'owner group (index into sp, -1 none)']},
+        'sp': SP, 'P': hrows}
 hdest = ROOT / 'screener' / 'hud_all.js'
 hdest.write_text('window.RS_HUD=' + json.dumps(hout, separators=(',', ':'), ensure_ascii=False) + ';', encoding='utf-8')
-print(f'{hdest}: {len(hrows):,} located HUD properties ({len(H["P"]) - len(hrows):,} without a location left out), {hdest.stat().st_size / 1e6:.1f} MB')
+print(f'{hdest}: {len(hrows):,} located HUD properties ({len(H["P"]) - len(hrows):,} without a location left out; {sum(1 for r in hrows if r[20] >= 0):,} in {len(SP):,} owner groups), {hdest.stat().st_size / 1e6:.1f} MB')

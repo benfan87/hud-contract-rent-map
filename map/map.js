@@ -37,7 +37,7 @@ function start(HUD, LIH) {
   // HUD property is the same entry as that property.
   const ENT = new Map();
   for (const h of HUD.P) ENT.set(h[0], { key: h[0], id: h[0], hud: true, lih: null, h, name: titleCase(h[3]) || `HUD ${h[0]}`, addr: h[4], city: titleCase(h[5]), st: h[6], zip: h[7],
-    county: titleCase(h[8]), lat: h[1], lon: h[2], units: h[9] ?? h[10], owner: h[11], mgmt: h[12], zone: h[19], approx: h[13] });
+    county: titleCase(h[8]), lat: h[1], lon: h[2], units: h[9] ?? h[10], owner: h[11], mgmt: h[12], zone: h[19], approx: h[13], spon: h[20] ?? -1 });
   for (const q of LIH.P) {
     let e = q[9] && ENT.get(q[9]);
     if (!e) { e = { key: q[9] || 'L:' + (q[14] || `${q[0]},${q[1]}`), id: q[9] || null, hud: !!q[9], lih: null, h: null, name: titleCase(q[2]) || 'LIHTC project', addr: q[12],
@@ -45,10 +45,15 @@ function start(HUD, LIH) {
     e.lih = q; e.lihId = q[14]; q._e = e;
   }
   const ALL = [...ENT.values()].filter(e => e.lat != null);
+  // Owner groups (likely sponsors): HUD owner entities sharing an organization's email domain, else a mailing address
+  const SP = HUD.sp || [], SP_N = new Map(), SP_TEXT = new Map();
   for (const e of ALL) {
-    e.hay = [e.name, e.addr, e.city, e.st, stName[e.st], e.zip, e.county, e.id, e.lihId, e.owner, e.mgmt].filter(Boolean).join(' ').toLowerCase();
+    if (e.spon == null || e.spon < 0) e.spon = -1;
+    else { SP_N.set(e.spon, (SP_N.get(e.spon) || 0) + 1); SP_TEXT.set(e.spon, (SP_TEXT.get(e.spon) || SP[e.spon].toLowerCase()) + ' | ' + (e.owner || '').toLowerCase()); }
+    e.hay = [e.name, e.addr, e.city, e.st, stName[e.st], e.zip, e.county, e.id, e.lihId, e.owner, e.mgmt, e.spon >= 0 ? SP[e.spon] : ''].filter(Boolean).join(' ').toLowerCase();
     e.lname = (e.name || '').toLowerCase();
   }
+  const sponLabel = i => i == null || i < 0 ? '' : SP[i];
   const lihTxt = q => !q ? '–' : [q[7] ? `PIS ${q[7]}` : 'LIHTC', q[8] >= 0 ? LIH.cr[q[8]] : ''].filter(Boolean).join(' · ');
   const kindTxt = e => [e.hud && 'HUD', e.lih && 'LIHTC'].filter(Boolean).join(' + ');
   const kindBadges = e => (e.hud ? '<span class="b hud">HUD</span>' : '') + (e.lih ? '<span class="b lih">LIHTC</span>' : '') + (e.pin ? '<span class="b pin">Pin</span>' : '');
@@ -61,7 +66,7 @@ function start(HUD, LIH) {
   };
 
   /* ---------- state ---------- */
-  const DEF = () => ({ stf: '', county: '', zone: '', type: 'any', minUnits: '', pisMin: '', pisMax: '', activeOnly: false, exp: '' });
+  const DEF = () => ({ stf: '', county: '', zone: '', type: 'any', minUnits: '', pisMin: '', pisMax: '', activeOnly: false, exp: '', spon: -1 });
   const S = Object.assign(DEF(), { radius: 5, ctr: null, view: 'near', sel: null, selE: null, limit: 300, sort: { near: { i: 'd', d: 1 }, view: { i: 'name', d: 1 } } });
   // Map layers are not filters: "Reset all" leaves them alone, but a layer that is off also leaves the lists.
   const MAPOPT = { hud: true, lih: true, qct: false, dda: false };
@@ -69,6 +74,7 @@ function start(HUD, LIH) {
   const layerOn = e => (e.lih && MAPOPT.lih) || (e.hud && MAPOPT.hud);
   function entOk(e) {
     if (!layerOn(e) || !TYPEF[S.type](e)) return false;
+    if (S.spon >= 0 && e.spon !== S.spon) return false;
     if (S.stf && e.st !== S.stf) return false;
     if (S.county && e.county !== S.county) return false;
     if (S.zone && ZN && !ZONEF[S.zone](e.zone || 0)) return false;
@@ -108,7 +114,8 @@ function start(HUD, LIH) {
     C('ov', 'Overall exp.', r => r.e.h ? r.e.h[17] : null, { tip: 'Earliest overall contract expiration, including remaining option terms' }),
     C('cat', 'HUD category', r => r.e.h ? r.e.h[18] : null),
     ...(ZN ? [C('zone', '2027 QCT/DDA', r => zoneTxt(r.e.zone || 0), { tip: 'In a 2027 Qualified Census Tract and/or Difficult Development Area' })] : []),
-    C('owner', 'Owner', r => r.e.owner), C('mgmt', 'Management agent', r => r.e.mgmt),
+    C('owner', 'Owner', r => r.e.owner), C('spon', 'Owner group', r => sponLabel(r.e.spon), { tip: 'Likely sponsor: owner entities sharing an email domain or mailing address' }),
+    C('mgmt', 'Management agent', r => r.e.mgmt),
     C('id', 'ID', r => r.e.id || r.e.lihId, { tip: 'HUD property ID, else the LIHTC id' }),
   ];
   const VIEWS = { near: { rows: () => NEAR, cols: COLS }, view: { rows: () => INVIEW, cols: COLS.filter(c => c.k !== 'd' || S.ctr) } };
@@ -291,6 +298,7 @@ function start(HUD, LIH) {
     x += '<dl class="kv">';
     if (e.hud) x += `<dt>HUD property ID</dt><dd>${esc(e.id || '–')}</dd>`;
     if (e.owner) x += `<dt>Owner</dt><dd>${esc(e.owner)}</dd>`;
+    if (e.spon >= 0) x += `<dt>Owner group (likely sponsor)</dt><dd><b>${esc(sponLabel(e.spon))}</b> · ${(SP_N.get(e.spon) || 0).toLocaleString()} properties${S.spon === e.spon ? '' : ` · <button class="link" data-spon="${e.spon}">Show this group's whole portfolio</button>`}</dd>`;
     if (e.mgmt) x += `<dt>Management agent</dt><dd>${esc(e.mgmt)}</dd>`;
     if (e.units != null) x += `<dt>Units</dt><dd>${int(e.units)}${h && h[10] != null && h[10] !== h[9] ? ` (${int(h[10])} assisted)` : ''}</dd>`;
     if (h) x += `<dt>HUD category</dt><dd>${esc(h[18] || '–')}</dd><dt>Active HUD contracts</dt><dd>${h[15] ? `${h[15]} (${esc(h[14] || 'type not on file')}) · term ends ${esc(h[16] || '?')} · overall expiration ${esc(h[17] || '?')}` : "None in HUD's active list"}</dd>`;
@@ -306,7 +314,19 @@ function start(HUD, LIH) {
     $('#detail').hidden = false;
     $('.detail-scroll').scrollTop = 0;
   }
-  $('#detailBody').addEventListener('click', ev => { const b = ev.target.closest('[data-center]'); if (b) { const e = b.dataset.center === 'pin' ? S.selE : ENT.get(b.dataset.center); if (e) setCenter(e); } });
+  $('#detailBody').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-center]'); if (b) { const e = b.dataset.center === 'pin' ? S.selE : ENT.get(b.dataset.center); if (e) setCenter(e); }
+    const g = ev.target.closest('[data-spon]'); if (g) filterToSponsor(+g.dataset.spon);
+  });
+  function filterToSponsor(i) {
+    $('#sugg').hidden = true; $('#q').value = '';
+    S.spon = i; S.stf = ''; S.county = ''; S.ctr = null;
+    setView('view');   // the In view list shows the portfolio once the map frames it
+    const pts = ALL.filter(e => e.spon === i && !e.approx).map(e => [e.lat, e.lon]);
+    if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [20, 20], maxZoom: 12 });
+    syncControls(); refresh();
+  }
+  $('#f-spon').addEventListener('click', e => { if (e.target.dataset.clearSpon != null) { S.spon = -1; syncControls(); refresh(); } });
   function closeDetail() { $('#detail').hidden = true; S.sel = null; S.selE = null; history.replaceState(null, '', location.pathname + location.search); $$('#ctbl tbody tr.sel').forEach(tr => tr.classList.remove('sel')); drawDots(); }
   $('#closeDetail').addEventListener('click', closeDetail);
   document.addEventListener('keydown', e => {
@@ -333,10 +353,11 @@ function start(HUD, LIH) {
     stateF.value = S.stf; fillCounties();
     $('#zone').value = S.zone; $('#type').value = S.type; $('#minUnits').value = S.minUnits; $('#pisMin').value = S.pisMin; $('#pisMax').value = S.pisMax;
     $('#activeOnly').checked = S.activeOnly; $('#exp').value = S.exp; $('#radius').value = S.radius;
+    $('#f-spon').innerHTML = S.spon >= 0 ? `<span class="chip">${esc(sponLabel(S.spon))} <span class="n">${(SP_N.get(S.spon) || 0).toLocaleString()}</span><button class="link" data-clear-spon title="Remove">×</button></span>` : '<span class="muted">All owners</span>';
   }
   function renderCtr() {
     $('#ctrInfo').innerHTML = S.ctr ? `Area: <b>${esc(S.ctr.label)}</b> · ${S.radius} mi · see the Nearby tab` : 'No area set. Pick a search result or drop a pin to list everything within the radius.';
-    const n = [S.type !== 'any', S.stf, S.county, S.zone, ok(S.minUnits), ok(S.pisMin) || ok(S.pisMax), S.activeOnly, S.exp].filter(Boolean).length;
+    const n = [S.type !== 'any', S.stf, S.county, S.zone, ok(S.minUnits), ok(S.pisMin) || ok(S.pisMax), S.activeOnly, S.exp, S.spon >= 0].filter(Boolean).length;
     $('#filtersBtn').textContent = n ? `Filters (${n})` : 'Filters';
   }
   function refresh() {
@@ -396,6 +417,13 @@ function start(HUD, LIH) {
     const q = $('#q').value.trim();
     if (!q) return showSugg([]);
     const items = matches(q).map(e => ({ html: `${esc(e.name)} ${kindBadges(e)}<small>${esc([e.addr, e.city, e.st, e.zip].filter(Boolean).join(', '))}${e.id ? ' · ' + esc(e.id) : e.lihId ? ' · ' + esc(e.lihId) : ''}${e.approx ? ' · approximate location' : ''}</small>`, go: () => pick(e) }));
+    const t = q.toLowerCase().replace(/^@/, '');
+    if (t.length >= 3) {
+      const sp = [];
+      for (const [i, txt] of SP_TEXT) { const at = txt.indexOf(t); if (at >= 0) sp.push([i, at < SP[i].length ? 0 : 1]); }
+      sp.sort((a, b) => a[1] - b[1] || (SP_N.get(b[0]) || 0) - (SP_N.get(a[0]) || 0)).slice(0, 3).forEach(([i]) => items.unshift({
+        html: `Owner group ${esc(sponLabel(i))}<small>${(SP_N.get(i) || 0).toLocaleString()} HUD properties · shows the whole portfolio and clears the area</small>`, go: () => filterToSponsor(i) }));
+    }
     const st = Object.keys(stName).find(c => c !== 'US' && (c.toLowerCase() === q.toLowerCase() || (q.length >= 3 && stName[c].toLowerCase().startsWith(q.toLowerCase()))));
     if (st && stN[st]) items.unshift({ html: `Show all of ${esc(stName[st])} (${st})<small>State filter · ${stN[st].toLocaleString()} places</small>`, go: () => { $('#sugg').hidden = true; $('#q').value = ''; S.stf = st; S.county = ''; syncControls(); refresh(); fitState(); } });
     if (/^\d{5}$/.test(q)) {
@@ -469,6 +497,7 @@ function start(HUD, LIH) {
     <ul><li>HUD's 2027 Qualified Census Tracts and Difficult Development Areas (effective 2027-01-01), tested point-in-polygon for every place. Turn the polygons on from "On the map"; filter by them in the sidebar.</li></ul>
     <h3>Using the map</h3>
     <ul><li>Search finds any HUD property, LIHTC project, state, ZIP, address (Esri geocoder) or coordinates; "Drop a pin" picks any point. The pick becomes the center of an area, and the Nearby tab lists everything within the radius. The In view tab lists whatever is inside the current map window.</li>
+      <li>Owner group (likely sponsor): HUD owner entities are usually single-asset LLCs or LPs, so they are grouped by a shared organization email domain (free and ISP mail ignored) or, without one, a shared mailing address. Search a sponsor name or email domain (e.g. "mercyhousing") and pick the owner-group result, or open a HUD property and click "Show this group's whole portfolio". It is a lead, not proof of control.</li>
       <li>The checkboxes at the top left of the map switch the HUD and LIHTC layers on and off; the "Show" filter in the sidebar does the same with finer splits (for example LIHTC projects that are not HUD properties). Both lists follow the layers and filters.</li>
       <li>Past ${CAP.toLocaleString()} places in view, the map draws a sample (1 in 2, 1 in 3 …) so the national view still shows the pattern; zoom in to see every place.</li></ul>
     <p class="note">For screening only. HUD and state files lag sales, resyndications and new contracts; verify before relying on any record. Built ${esc(LIH.meta.built)}.</p>`;
@@ -483,6 +512,6 @@ function start(HUD, LIH) {
   };
   fromHash();
   window.addEventListener('hashchange', fromHash);
-  window.HLMAP = { S, MAPOPT, ENT, ALL, map, refresh, setCenter, selectEnt, entOk, nearRows, viewRows };
+  window.HLMAP = { S, MAPOPT, ENT, ALL, SP, SP_N, map, refresh, setCenter, selectEnt, entOk, nearRows, viewRows, filterToSponsor };
 }
 })();
