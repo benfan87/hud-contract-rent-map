@@ -57,13 +57,14 @@
       <div class="row gap mt"><label class="lbl inline" for="zone">2027 QCT / DDA</label>
         <select id="zone"><option value="">Any location</option><option value="qct">In a QCT</option><option value="dda">In a DDA</option><option value="either">In a QCT or a DDA</option><option value="both">In both</option><option value="neither">In neither</option></select></div>
       <div class="row gap mt"><label class="lbl inline" for="minUnits">Units at least</label><input id="minUnits" type="number" min="0" placeholder="any"></div>
-      <div class="row gap mt"><label class="lbl inline">LIHTC placed in service</label>
-        <input id="pisMin" type="number" min="1986" max="2030" placeholder="from"><span>to</span><input id="pisMax" type="number" min="1986" max="2030" placeholder="to"></div>
+      <label class="lbl mt" for="pisMin">LIHTC placed in service</label>
+      <div class="row gap"><input id="pisMin" type="number" min="1986" max="2030" placeholder="from"><span>to</span><input id="pisMax" type="number" min="1986" max="2030" placeholder="to"></div>
       <p class="hint">A placed-in-service range keeps only LIHTC projects with a year in it. HUD properties without a LIHTC match drop out.</p>
       <label class="chk mt"><input type="checkbox" id="activeOnly"> Only HUD properties with an active contract</label>
       <p class="hint">HUD's active Section 8 / PRAC / PAC / RAC contract list. LIHTC-only projects drop out.</p>
-      <div class="row gap mt"><label class="lbl inline" for="exp">HUD overall expiration</label>
+      <div class="row gap mt"><label class="lbl inline" for="exp">HUD contract runs out</label>
         <select id="exp"><option value="">Any time</option><option value="2">Within 2 years</option><option value="5">Within 5 years</option><option value="6">Within 6 years</option><option value="10">Within 10 years</option></select></div>
+      <p class="hint">The overall contract expiration, including remaining option terms. Properties without one drop out.</p>
     </section>
 
     <section class="block" id="exportBlock">
@@ -97,11 +98,11 @@
 </div>
 
 <dialog id="about"><div id="aboutBody"></div><form method="dialog"><button class="btn">Close</button></form></dialog>
-<div id="loading" class="loading"><div>Loading every HUD property and LIHTC project…<small>About 15 MB loads into your browser. The first visit can take 5–15 seconds; after that it's cached.</small></div></div>
+<div id="loading" class="loading"><div>Loading Happer: every HUD property and LIHTC project…<small>About 15 MB loads into your browser. The first visit can take 5–15 seconds; after that it's cached.</small></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="screener/states.js?v=9"></script>
 <script src="screener/zones.js?v=1"></script>
-<script src="map/map.js?v=4"></script>
+<script src="map/map.js?v=5"></script>
 </body>
 </html>

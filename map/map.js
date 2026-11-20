@@ -55,6 +55,23 @@ function start(HUD, LIH) {
     e.lname = (e.name || '').toLowerCase();
   }
   const sponLabel = i => i == null || i < 0 ? '' : SP[i];
+  // Cities: how many places each holds and where its located places centre, for "Center on <city>" search results
+  const CITY = new Map();
+  for (const e of ALL) {
+    if (!e.city) continue;
+    const k = e.city.toUpperCase() + '|' + (e.st || '');
+    let c = CITY.get(k); if (!c) { c = { name: e.city, st: e.st, n: 0, lat: 0, lon: 0, m: 0 }; CITY.set(k, c); }
+    c.n++; if (!e.approx) { c.lat += e.lat; c.lon += e.lon; c.m++; }
+  }
+  function cityMatches(q) {
+    let t = q.trim().toUpperCase().replace(/[.,]+/g, ' ').replace(/\s+/g, ' '), st = null;
+    const m = t.match(/^(.*\S)\s+([A-Z]{2})$/);
+    if (m && stName[m[2]]) { t = m[1]; st = m[2]; }
+    if (t.length < 3) return [];
+    const res = [];
+    for (const [k, c] of CITY) { const [name, s2] = k.split('|'); if ((st && s2 !== st) || !name.startsWith(t) || !c.m) continue; res.push([c, name === t ? 0 : 1]); }
+    return res.sort((a, b) => a[1] - b[1] || b[0].n - a[0].n).slice(0, 2).map(r => r[0]);
+  }
   const lihTxt = q => !q ? '–' : [q[7] ? `PIS ${q[7]}` : 'LIHTC', q[8] >= 0 ? LIH.cr[q[8]] : ''].filter(Boolean).join(' · ');
   const kindTxt = e => [e.hud && 'HUD', e.lih && 'LIHTC'].filter(Boolean).join(' + ');
   const kindBadges = e => (e.hud ? '<span class="b hud">HUD</span>' : '') + (e.lih ? '<span class="b lih">LIHTC</span>' : '') + (e.pin ? '<span class="b pin">Pin</span>' : '');
@@ -132,8 +149,9 @@ function start(HUD, LIH) {
     });
   }
   let SHOWN = [];
+  const LIST_CAP = 3000;   // past this, an In view list is an alphabet of a whole region, not a list anyone reads
   function renderTable() {
-    const V = VIEWS[S.view], so = S.sort[S.view], rows = sorted();
+    const V = VIEWS[S.view], so = S.sort[S.view], rows = S.view === 'view' && INVIEW.length > LIST_CAP ? [] : sorted();
     $('#ctbl thead').innerHTML = '<tr>' + V.cols.map(c => `<th data-k="${c.k}" class="${c.num ? 'num' : ''}" title="${esc(c.tip ? c.tip + '. Click to sort' : 'Click to sort')}">${esc(c.t)}${so.i === c.k ? `<span class="arr">${so.d > 0 ? ' ▲' : ' ▼'}</span>` : ''}</th>`).join('') + '</tr>';
     SHOWN = rows.slice(0, S.limit);
     $('#ctbl tbody').innerHTML = SHOWN.map((r, i) => `<tr data-i="${i}" data-id="${esc(r.e.key)}"${r.e.key === S.sel ? ' class="sel"' : ''}>` +
@@ -143,11 +161,13 @@ function start(HUD, LIH) {
     em.innerHTML = S.view === 'near'
       ? (S.ctr ? `<b>Nothing within ${S.radius} miles of the center</b> passes the filters. Widen the radius or <button class="link" data-act="reset">reset the filters</button>.`
         : '<b>No area set.</b> Search for any property, address or ZIP above, or drop a pin, to list everything within the radius.')
+      : INVIEW.length > LIST_CAP ? `<b>${INVIEW.length.toLocaleString()} places are in view</b>, too many to list. Zoom the map in to a city or a region, or search a place and use the Nearby tab.`
       : `<b>Nothing in this part of the map</b> passes the filters. Pan or zoom out, or <button class="link" data-act="reset">reset the filters</button>.`;
     $('#more').innerHTML = rows.length > S.limit ? `Showing ${S.limit.toLocaleString()} of ${rows.length.toLocaleString()} rows <button class="btn small" id="moreBtn">Show 300 more</button>` : '';
     renderSummary(rows);
   }
   function renderSummary(rows) {
+    if (S.view === 'view' && INVIEW.length > LIST_CAP) rows = INVIEW;
     const nH = rows.filter(r => r.e.hud).length, nL = rows.filter(r => r.e.lih).length, nB = rows.filter(r => r.e.hud && r.e.lih).length;
     const mix = `${plural(rows.length, 'place')} · ${nH.toLocaleString()} HUD · ${nL.toLocaleString()} LIHTC (${nB.toLocaleString()} at a HUD property)`;
     $('#summary').innerHTML = S.view === 'near'
@@ -248,12 +268,14 @@ function start(HUD, LIH) {
     const vis = [];
     for (const e of ALL) if (e.lat >= so && e.lat <= no && e.lon >= we && e.lon <= ea && entOk(e)) vis.push(e);
     const step = Math.max(1, Math.ceil(vis.length / CAP));
+    // Zoomed out, the dots shrink so the national view reads as a pattern instead of a wall of rings.
+    const z = map.getZoom(), k = z <= 5 ? 0.55 : z <= 8 ? 0.75 : 1;
     let nH = 0, nL = 0;
     for (let i = 0; i < vis.length; i += step) {
       const e = vis[i], asLih = e.lih && MAPOPT.lih;
-      const m = asLih && e.hud ? L.circleMarker([e.lat, e.lon], { radius: 7, weight: 2, color: LIHC, fillColor: HUDC, fillOpacity: e.approx ? 0.3 : 0.7 })
-        : asLih ? L.circleMarker([e.lat, e.lon], { radius: 4, weight: 1, color: '#fff', fillColor: LIHC, fillOpacity: e.approx ? 0.45 : 0.85 })
-        : L.circleMarker([e.lat, e.lon], { radius: 3.5, weight: 0.8, color: '#fff', fillColor: HUDC, fillOpacity: e.approx ? 0.4 : 0.85 });
+      const m = asLih && e.hud ? L.circleMarker([e.lat, e.lon], { radius: 7 * k, weight: 2 * k, color: LIHC, fillColor: HUDC, fillOpacity: e.approx ? 0.3 : 0.7 })
+        : asLih ? L.circleMarker([e.lat, e.lon], { radius: 4 * k, weight: k, color: '#fff', fillColor: LIHC, fillOpacity: e.approx ? 0.45 : 0.85 })
+        : L.circleMarker([e.lat, e.lon], { radius: 3.5 * k, weight: 0.8 * k, color: '#fff', fillColor: HUDC, fillOpacity: e.approx ? 0.4 : 0.85 });
       if (e.key === S.sel) m.setStyle({ color: '#111', weight: 3, radius: 8 });
       m.bindTooltip(() => tip(e));
       m.on('click', () => selectEnt(e, false));
@@ -417,14 +439,17 @@ function start(HUD, LIH) {
   function suggest() {
     const q = $('#q').value.trim();
     if (!q) return showSugg([]);
-    const items = matches(q).map(e => ({ html: `${esc(e.name)} ${kindBadges(e)}<small>${esc([e.addr, e.city, e.st, e.zip].filter(Boolean).join(', '))}${e.id ? ' · ' + esc(e.id) : e.lihId ? ' · ' + esc(e.lihId) : ''}${e.approx ? ' · approximate location' : ''}</small>`, go: () => pick(e) }));
-    const t = q.toLowerCase().replace(/^@/, '');
+    const places = matches(q).slice(0, 8).map(e => ({ html: `${esc(e.name)} ${kindBadges(e)}<small>${esc([e.addr, e.city, e.st, e.zip].filter(Boolean).join(', '))}${e.id ? ' · ' + esc(e.id) : e.lihId ? ' · ' + esc(e.lihId) : ''}${e.approx ? ' · approximate location' : ''}</small>`, go: () => pick(e) }));
+    const t = q.toLowerCase().replace(/^@/, ''), groups = [];
     if (t.length >= 3) {
       const sp = [];
       for (const [i, txt] of SP_TEXT) { const at = txt.indexOf(t); if (at >= 0) sp.push([i, at < SP[i].length ? 0 : 1]); }
-      sp.sort((a, b) => a[1] - b[1] || (SP_N.get(b[0]) || 0) - (SP_N.get(a[0]) || 0)).slice(0, 3).forEach(([i]) => items.unshift({
+      sp.sort((a, b) => a[1] - b[1] || (SP_N.get(b[0]) || 0) - (SP_N.get(a[0]) || 0)).slice(0, 2).forEach(([i]) => groups.push({
         html: `Owner group ${esc(sponLabel(i))}<small>${(SP_N.get(i) || 0).toLocaleString()} HUD properties · shows the whole portfolio and clears the area</small>`, go: () => filterToSponsor(i) }));
     }
+    const cities = cityMatches(q).map(c => ({ html: `Center on ${esc(c.name)}, ${esc(c.st)}<small>${c.n.toLocaleString()} places in the city · lists everything within ${S.radius} mi of its centre</small>`,
+      go: () => pinAt(c.lat / c.m, c.lon / c.m, `${c.name}, ${c.st}`) }));
+    const items = [...cities, ...groups, ...places];
     const st = Object.keys(stName).find(c => c !== 'US' && (c.toLowerCase() === q.toLowerCase() || (q.length >= 3 && stName[c].toLowerCase().startsWith(q.toLowerCase()))));
     if (st && stN[st]) items.unshift({ html: `Show all of ${esc(stName[st])} (${st})<small>State filter · ${stN[st].toLocaleString()} places</small>`, go: () => { $('#sugg').hidden = true; $('#q').value = ''; S.stf = st; S.county = ''; syncControls(); refresh(); fitState(); } });
     if (/^\d{5}$/.test(q)) {
