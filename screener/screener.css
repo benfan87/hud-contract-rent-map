@@ -63,3 +63,12 @@ dialog ul { padding-left: 18px; }
 @media (max-width: 900px) { .mapopts { max-width: 190px; font-size: 11px; } .mapopts > b { display: none; } }
 @media (max-width: 600px) { .mapopts { max-width: 165px; padding: 3px 6px; line-height: 1.3; } .mapopts .hint { display: none !important; } .mapopts .chk { padding: 0; } .leaflet-control.legend:not(.mapopts) { font-size: 10px; line-height: 1.35; padding: 4px 6px; } .legend i { width: 8px; height: 8px; } }
 .legend i.sq { border-radius: 2px; opacity: .55; }
+
+/* Area search (center + radius), shared look with the national map */
+.b.hud { background: #475569; }
+.b.lih { background: #db2777; }
+.b + .b { margin-left: 3px; }
+.center-info { margin-top: 6px; font-size: 12px; }
+.center-info b { color: var(--ink, #111); }
+.pinmode .leaflet-container { cursor: crosshair; }
+.callout .btn { margin-top: 6px; }

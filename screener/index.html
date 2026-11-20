@@ -7,7 +7,7 @@
 <title>Rent Screener</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="../assets/app.css">
-<link rel="stylesheet" href="screener.css?v=4">
+<link rel="stylesheet" href="screener.css?v=5">
 </head>
 <body>
 <div id="gate" class="gate">
@@ -34,8 +34,22 @@
 <div class="layout">
   <aside class="side">
     <section class="block">
-      <label class="lbl" for="q">Search a property, city, ZIP, owner or HUD ID</label>
-      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Property, city, ZIP, owner or HUD ID">
+      <label class="lbl" for="q">Find any HUD property, LIHTC project, rent study, address or ZIP</label>
+      <div class="searchwrap">
+        <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="e.g. Tanner Manor · 85040 · Phoenix AZ · 800000962">
+        <div id="sugg" class="sugg" hidden></div>
+      </div>
+      <div class="row gap">
+        <button id="pinBtn" class="btn" title="Click the map to set the center of the area">Drop a pin</button>
+        <button id="clearCtr" class="btn ghost">Clear area</button>
+      </div>
+      <div id="ctrInfo" class="center-info muted">No area set. Pick a search result or drop a pin to see everything within the radius.</div>
+      <label class="lbl mt" for="radius">Radius</label>
+      <div class="row gap"><input id="radius" class="w60" type="number" min="0.5" max="500" step="0.5"><span>miles</span>
+        <span class="tiny muted">· <button class="link" data-r="1">1</button> · <button class="link" data-r="3">3</button> · <button class="link" data-r="5">5</button> · <button class="link" data-r="10">10</button> · <button class="link" data-r="25">25</button></span></div>
+      <label class="chk mt"><input type="checkbox" id="areaOnly"> Limit the other tabs to this area</label>
+      <p class="hint">The radius sets both the area around the center and which rent studies feed each property's market estimate.</p>
+      <div id="textF" class="hint" hidden></div>
       <div class="row gap mt" id="stateFRow" hidden><label class="lbl inline" for="stateF">State</label><select id="stateF"><option value="">All states</option></select></div>
       <div class="row gap mt"><label class="lbl inline" for="county">County</label><select id="county"><option value="">All counties</option></select></div>
       <div class="row gap mt"><label class="lbl inline" for="zone">2027 QCT / DDA</label><select id="zone"><option value="">Any location</option><option value="qct">In a QCT</option><option value="dda">In a DDA</option><option value="either">In a QCT or a DDA</option><option value="both">In both</option><option value="neither">In neither</option></select></div>
@@ -43,9 +57,6 @@
 
     <section class="block" id="filtersBlock">
       <div class="block-head"><span>Market estimate</span><button class="link" id="resetAll">Reset all</button></div>
-      <label class="lbl" for="radius">Use rent studies within</label>
-      <div class="row gap"><input id="radius" class="w60" type="number" min="0.5" max="500" step="0.5"><span>miles</span>
-        <span class="tiny muted">· <button class="link" data-r="3">3</button> · <button class="link" data-r="5">5</button> · <button class="link" data-r="10">10</button> · <button class="link" data-r="25">25</button></span></div>
       <div id="covStats" class="hint"></div>
       <div class="row gap mt"><label class="lbl inline" for="combine">Combine them</label>
         <select id="combine"><option value="idw">Average, closer ones count more</option><option value="median">Median</option><option value="nearest">Nearest study only</option></select></div>
@@ -104,6 +115,7 @@
     <div class="results">
       <div class="results-head">
         <div class="tabs" role="tablist">
+          <button class="tab" data-view="near">Nearby</button>
           <button class="tab active" data-view="props">Screener</button>
           <button class="tab" data-view="lines">Rents by bedroom</button>
           <button class="tab" data-view="rcs">Rent studies</button>
@@ -128,8 +140,8 @@
 <dialog id="about"><div id="aboutBody"></div><form method="dialog"><button class="btn">Close</button></form></dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="states.js?v=8"></script>
+<script src="states.js?v=9"></script>
 <script src="zones.js?v=1"></script>
-<script src="screener.js?v=6"></script>
+<script src="screener.js?v=7"></script>
 </body>
 </html>
