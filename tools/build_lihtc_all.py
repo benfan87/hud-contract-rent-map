@@ -15,7 +15,9 @@ Rules:
     flagged approximate; otherwise none.
   - Year 15 / resyndication: the same rules as tools/merge_lihtc.py.
   - 2027 QCT/DDA: the same point-in-polygon test as tools/build_qct_dda.py.
-  - A project whose only HUD link is a "possible" (low) match keeps that HUD property as a possible duplicate.
+  - A project whose only HUD link is a "possible" (low) match keeps that HUD property as a possible duplicate
+    (not when the link was rejected on manual review).
+  - tools/lihtc_link_overrides.json "not_lihtc" records (e.g. bond-only issues) are left out.
 Usage: python tools/build_lihtc_all.py <hud_lihtc.json> [<state.json> ...] <matches.json> [--year 2027] [--geo-dir DIR]
 """
 import argparse
@@ -31,6 +33,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from match_lihtc import group_records, year  # noqa: E402
 from merge_lihtc import HUD_CREDIT, HUD_TYPE  # noqa: E402
+from lihtc_overrides import not_lihtc_ids, rec_ids  # noqa: E402
 
 HUD_PAGE = "https://hudgis-hud.opendata.arcgis.com/maps/HUD::low-income-housing-tax-credit-properties-1/about"
 LI_COLS = ["project", "addr", "city", "st", "zip", "id", "hudId", "alloc", "pis", "credit", "bond", "type", "units",
@@ -79,6 +82,8 @@ def main():
             label = r["_src"]
             rows.append(r)
         sources.append({"file": pathlib.Path(f).name, "source": d["source"], "fetched": d["fetched"], "label": label})
+    drop = not_lihtc_ids()  # tools/lihtc_link_overrides.json: records that are not tax-credit projects
+    rows = [r for r in rows if not rec_ids(r.get("STATE_ID"), r.get("HUD_ID")) & drop]
     mt = json.load(open(mfile, encoding="utf-8"))
     linked, possible = set(), {}
     for pid, ms in mt["matches"].items():
@@ -86,7 +91,7 @@ def main():
             k = (m["source"], m["hud_id"], m["state_id"], m["project"], m["addr"])
             if m["tier"] in ("high", "medium"):
                 linked.add(k)
-            else:
+            elif not m["why"].startswith("rejected on manual review"):
                 possible.setdefault(k, (pid, m["why"]))
     key = lambda r: (r["_src"], r["HUD_ID"], r["STATE_ID"], r["PROJECT"], r["PROJ_ADD"])
     left = [r for r in rows if key(r) not in linked]

@@ -5,6 +5,7 @@ HUD's LIHTC data has no HUD multifamily property ID, so records are matched on a
   medium  same address under a different name, within 250 m with a similar name, or same name in the same ZIP
           (state lists with no ZIP: near-identical name or same street address in the same city)
   low     within 100 m on the same street, names differ (shown as "possible", needs checking)
+Manual corrections in tools/lihtc_link_overrides.json turn a wrong link into "low" (possible, not used).
 Usage: python tools/match_lihtc.py <source.json> [<source.json> ...] <out_matches.json>
   Sources: tools/fetch_lihtc_hud.py output, tools/parse_az_lihtc.py output (same row shape).
 """
@@ -16,6 +17,8 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+from lihtc_overrides import rec_ids, rejected  # noqa: E402
 STOP = {"APARTMENTS", "APARTMENT", "APTS", "APT", "THE", "AT", "OF", "HOMES", "HOUSING", "VILLAGE", "MANOR",
         "TOWERS", "TOWER", "PLAZA", "COURT", "CT", "ESTATES", "SENIOR", "SENIORS", "II", "III", "IV", "I", "PHASE",
         "LP", "LLC", "INC", "AND", "&", "RESIDENCES", "PLACE", "GARDENS", "HOUSE"}
@@ -230,6 +233,11 @@ def main():
                                  mff_ra=r.get("MFF_RA"), units=r["N_UNITS"], li_units=r["LI_UNITS"], allocamt=r["ALLOCAMT"],
                                  nonprog=r.get("NONPROG"), company=r["COMPANY"], source=r["_src"], url=r["_url"],
                                  why=f"same project as {base['project']} ({base['why']})"))
+        rej = rejected(pid)  # manual corrections (tools/lihtc_link_overrides.json): wrong links become "possible" only
+        for m in out_rows:
+            hit = next((rej[i] for i in rec_ids(m["state_id"], m["hud_id"]) if i in rej), None)
+            if hit:
+                m.update(tier="low", why=f"rejected on manual review: {hit}; {m['why']}")
         if out_rows:
             out_rows.sort(key=lambda m: ({"high": 0, "medium": 1, "low": 2}[m["tier"]], -(m["yr_pis"] or 0)))
             matches[pid] = out_rows

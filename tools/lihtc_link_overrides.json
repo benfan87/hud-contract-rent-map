@@ -1,0 +1,19 @@
+{
+  "about": "Manual corrections to the automatic HUD property <-> LIHTC record matching (tools/match_lihtc.py). Read by tools/lihtc_overrides.py: tools/match_lihtc.py and tools/build_lihtc_all.py honor it on a full rebuild, and tools/apply_lihtc_overrides.py patches the built assets/hud_data.js and assets/lihtc_all.js in place. Record ids are the LIHTC record's state id or HUD id (LI 'id' / 'hudId').",
+  "reject_links": [
+    {"hud_property_id": "800000864", "property": "Christian Care Manor II, 11802 N 19th Ave, Phoenix, AZ", "record_ids": ["BD-0048"],
+     "record": "Christian Care Manor I & II (ADOH bond list, 2005)", "reason": "2005 tax-exempt bond issue with no tax credits (ADOH lists no credit amount); not a LIHTC project", "reviewed": "2026-11-19"},
+    {"hud_property_id": "800000865", "property": "Christian Care Manor III, 1944 W Sunnyside Ave, Phoenix, AZ", "record_ids": ["BD-0048"],
+     "record": "Christian Care Manor I & II (ADOH bond list, 2005)", "reason": "2005 tax-exempt bond issue with no tax credits (ADOH lists no credit amount); not a LIHTC project", "reviewed": "2026-11-19"},
+    {"hud_property_id": "800000962", "property": "Tanner Gardens, 4420 S 18th Pl, Phoenix, AZ", "record_ids": ["AZA20030090", "TC-0216", "0216"],
+     "record": "Tanner Manor / Tanner Seniors (HUD AZA20030090, ADOH 0216), 2150-2216 E Broadway Rd", "reason": "Tanner Manor is a separate LIHTC property on E Broadway Rd; Tanner Gardens (1974 HUD senior property, same nonprofit owner since 1973) has no LIHTC award. Matched only on the shared 'Tanner' name", "reviewed": "2026-11-19"}
+  ],
+  "not_lihtc": [
+    {"record_ids": ["BD-0048"], "record": "Christian Care Manor I & II (ADOH bond list, 2005)", "reason": "bond-only issue, no tax credits: not shown as a LIHTC project", "reviewed": "2026-11-19"}
+  ],
+  "lihtc_only": [
+    {"id": "AZA20030090", "record_ids": ["AZA20030090", "TC-0216", "0216"], "name": "Tanner Manor",
+     "lat": 33.407025, "lon": -112.034265, "loc": "L", "zip": "85040", "qct2027": true, "dda2027": false, "flags": 5,
+     "reason": "unlinked from Tanner Gardens (see reject_links); shown as its own LIHTC-only project at HUD's geocode. 2027 QCT: tract 04013115300 is a 2027 QCT; ZCTA 85040 is not a 2027 SDDA. Flags: nonprofit + HOME (HUD LIHTC record).", "reviewed": "2026-11-19"}
+  ]
+}
