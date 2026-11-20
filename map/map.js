@@ -1,4 +1,4 @@
-/* HUD + LIHTC map (lihtc.html at the site root): every located HUD multifamily property and every LIHTC project on
+/* Happer, the HUD + LIHTC map (lihtc.html at the site root): every located HUD multifamily property and every LIHTC project on
    one map, with the same layers, search, area radius and detail panel as the rent screener (screener/), minus the rent
    studies, estimates and password. Data: screener/hud_all.js, screener/lihtc.js, screener/zones.js (public HUD data). */
 (function () {
@@ -478,15 +478,15 @@ function start(HUD, LIH) {
     const cell = v => { if (v == null || (typeof v === 'number' && !isFinite(v))) return ''; const s = typeof v === 'number' ? String(Math.round(v * 10000) / 10000) : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const cols = [...V.cols, C('lat', 'Latitude', r => r.e.lat), C('lon', 'Longitude', r => r.e.lon), C('approx', 'Location approximate', r => r.e.approx ? 'Y' : '')];
     const csv = [cols.map(c => cell(c.t)).join(','), ...rows.map(r => cols.map(c => cell(c.v(r))).join(','))].join('\r\n');
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })), download: `hud-lihtc-${S.view}-${today}.csv` });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })), download: `happer-${S.view}-${today}.csv` });
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   });
 
   /* ---------- about ---------- */
   const nHud = HUD.P.length, nLih = LIH.P.length, nOn = LIH.meta.on_hud, nOnly = LIH.meta.lihtc_only;
   $('#asof').textContent = `${nHud.toLocaleString()} HUD multifamily properties (HUD files ${HUD.meta.hud_built.slice(0, 10)}) · ${nLih.toLocaleString()} LIHTC projects (${nOn.toLocaleString()} at HUD properties; LIHTC lists built ${LIH.meta.lihtc_built})`;
-  $('#aboutBody').innerHTML = `<h2>About the data</h2>
-    <p>One map of every located HUD multifamily property and every LIHTC project, from public HUD data. It is the same map as the rent screener without the rent studies: no password, and nothing proprietary.</p>
+  $('#aboutBody').innerHTML = `<h2>About Happer</h2>
+    <p>Happer is one map of every located HUD multifamily property and every LIHTC project, from public HUD data. It is the same map as the rent screener without the rent studies: no password, and nothing proprietary.</p>
     <h3>HUD multifamily properties (slate dots)</h3>
     <ul><li>${nHud.toLocaleString()} properties from HUD's Multifamily Assistance &amp; Section 8 contract, property and active-portfolio files (published ${esc(HUD.meta.hud_built.slice(0, 10))}), with the owner entity, management agent, unit counts, HUD property category, active contract types and the earliest current-term and overall contract expirations. ${HUD.meta.unlocated_left_out.toLocaleString()} property IDs with no usable location are left out; they are searchable on the <a href="index.html">contract rent map</a>.</li>
       <li>Coordinates come from HUD's <i>Multifamily Properties - Assisted</i> GIS layer; properties it does not locate are placed at their ZIP centroid and drawn hollow ("approximate").</li>
